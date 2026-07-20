@@ -1,0 +1,63 @@
+# Set pipeline name.
+name: CI
+
+# Set pipeline triggers.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Define pipeline jobs.
+jobs:
+  # Check code formatting, run on latest Ubuntu runner.
+  format-check:
+    name: Check formatting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Install clang-format
+        run: sudo apt-get update && sudo apt-get install -y clang-format
+      - name: Check formatting
+        run: make format-check
+
+  # Find every lecture directory containing a Makefile.
+  discover-firmware:
+    name: Discover firmware projects
+    runs-on: ubuntu-latest
+    outputs:
+      dirs: ${{ steps.find.outputs.dirs }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Find Makefile directories
+        id: find
+        run: |
+          dirs=$(find . -mindepth 2 -name Makefile -exec dirname {} \; | sort)
+          json="["
+          first=true
+          for d in $dirs; do
+            if [ "$first" = true ]; then first=false; else json="$json,"; fi
+            json="$json\"$d\""
+          done
+          json="$json]"
+          echo "dirs=$json" >> "$GITHUB_OUTPUT"
+
+  # Build AVR firmware for each discovered directory, one job per directory.
+  build-firmware:
+    name: Build ${{ matrix.dir }}
+    needs: discover-firmware
+    if: needs.discover-firmware.outputs.dirs != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        dir: ${{ fromJson(needs.discover-firmware.outputs.dirs) }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Install AVR toolchain
+        run: sudo apt-get update && sudo apt-get install -y gcc-avr avr-libc binutils-avr
+      - name: Build firmware
+        run: make
+        working-directory: ${{ matrix.dir }}
