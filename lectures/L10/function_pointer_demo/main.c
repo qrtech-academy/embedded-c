@@ -25,12 +25,9 @@
 #define DEBOUNCE_TIMEOUT_MS 300U // Debounce timeout in ms.
 
 /** Limit parameters. */
-#define OVF_TIME_MS                                                            \
-  (TICK_PERIOD_MS * TICK_MAX) // Time between each overflow in ms.
-#define OVF_MAX                                                                \
-  (DEBOUNCE_TIMEOUT_MS / OVF_TIME_MS) // Overflows needed for timeout.
-#define OVF_TIMEOUT                                                            \
-  (uint8_t)(OVF_MAX + 0.5F) // Overflows needed for timeout, rounded.
+#define OVF_TIME_MS (TICK_PERIOD_MS * TICK_MAX)     // Time between each overflow in ms.
+#define OVF_MAX (DEBOUNCE_TIMEOUT_MS / OVF_TIME_MS) // Overflows needed for timeout.
+#define OVF_TIMEOUT (uint8_t)(OVF_MAX + 0.5F)       // Overflows needed for timeout, rounded.
 
 /** EEPROM parameters. */
 #define EEPROM_LED1_ADDR 1000U // EEPROM address containing the LED1 state.
@@ -46,44 +43,41 @@ static gpio_t led1, btn1;
 /**
  * @brief Print the LED1 state over UART.
  */
-static void print_led1_state(void) {
-  if (led1.read(&led1)) {
-    serial_print("LED1 enabled!\n");
-  } else {
-    serial_print("LED1 disabled!\n");
-  }
+static void print_led1_state(void)
+{
+    if (led1.read(&led1)) { serial_print("LED1 enabled!\n"); }
+    else { serial_print("LED1 disabled!\n"); }
 }
 
 /**
  * @brief Set up system.
  */
-static void setup(void) {
-  // Initialize GPIOs.
-  gpio_init(&led1, LED1_PIN, GPIO_MODE_OUTPUT);
-  gpio_init(&btn1, BTN1_PIN, GPIO_MODE_INPUT_PULLUP);
-  btn1.enable_pci(&btn1, true);
+static void setup(void)
+{
+    // Initialize GPIOs.
+    gpio_init(&led1, LED1_PIN, GPIO_MODE_OUTPUT);
+    gpio_init(&btn1, BTN1_PIN, GPIO_MODE_INPUT_PULLUP);
+    btn1.enable_pci(&btn1, true);
 
-  // Set up 300 ms debounce timer.
-  TCCR0B = (1U << CS00) | (1U << CS02);
+    // Set up 300 ms debounce timer.
+    TCCR0B = (1U << CS00) | (1U << CS02);
 
-  // Initialize serial driver.
-  serial_init();
+    // Initialize serial driver.
+    serial_init();
 
-  // Restore the previous LED state from EEPROM.
-  uint8_t led_state = 0U;
-  if (sizeof(led_state) ==
-      eeprom_read(&led_state, sizeof(led_state), EEPROM_LED1_ADDR)) {
-    if (EEPROM_LED1_ON == led_state) {
-      led1.toggle(&led1);
+    // Restore the previous LED state from EEPROM.
+    uint8_t led_state = 0U;
+    if (sizeof(led_state) == eeprom_read(&led_state, sizeof(led_state), EEPROM_LED1_ADDR))
+    {
+        if (EEPROM_LED1_ON == led_state) { led1.toggle(&led1); }
     }
-  }
-  print_led1_state();
+    print_led1_state();
 
-  // Initialize watchdog with a 1024 timeout.
-  watchdog_init(WATCHDOG_TIMEOUT_1024MS);
+    // Initialize watchdog with a 1024 timeout.
+    watchdog_init(WATCHDOG_TIMEOUT_1024MS);
 
-  // Enable interrupts globally.
-  sei();
+    // Enable interrupts globally.
+    sei();
 }
 
 /**
@@ -91,30 +85,34 @@ static void setup(void) {
  *
  *        Disable button interrupts for 300 ms to prevent debounce.
  */
-ISR(PCINT0_vect) {
-  // Disable button interrupts for 300 ms.
-  btn1.enable_pci(&btn1, false);
-  TIMER0_ENABLE;
+ISR(PCINT0_vect)
+{
+    // Disable button interrupts for 300 ms.
+    btn1.enable_pci(&btn1, false);
+    TIMER0_ENABLE;
 
-  // Toggle LED1 and save its new state if BTN1 is pressed.
-  if (btn1.read(&btn1)) {
-    led1.toggle(&led1);
-    led1_event = true;
-  }
+    // Toggle LED1 and save its new state if BTN1 is pressed.
+    if (btn1.read(&btn1))
+    {
+        led1.toggle(&led1);
+        led1_event = true;
+    }
 }
 
 /**
  * @brief Re-enable button interrupts after 300 ms.
  */
-ISR(TIMER0_OVF_vect) {
-  static volatile uint8_t ovf_counter = 0U;
+ISR(TIMER0_OVF_vect)
+{
+    static volatile uint8_t ovf_counter = 0U;
 
-  // Wait for 300 ms, then re-enable button interrupts and disable timer 0.
-  if (OVF_TIMEOUT <= ++ovf_counter) {
-    btn1.enable_pci(&btn1, true);
-    TIMER0_DISABLE;
-    ovf_counter = 0U;
-  }
+    // Wait for 300 ms, then re-enable button interrupts and disable timer 0.
+    if (OVF_TIMEOUT <= ++ovf_counter)
+    {
+        btn1.enable_pci(&btn1, true);
+        TIMER0_DISABLE;
+        ovf_counter = 0U;
+    }
 }
 
 /**
@@ -122,24 +120,25 @@ ISR(TIMER0_OVF_vect) {
  *
  * @return 0 on termination of the program (should never occur).
  */
-int main(void) {
-  setup();
+int main(void)
+{
+    setup();
 
-  while (1) {
-    // Reset the watchdog once every iteration of the loop.
-    watchdog_reset();
+    while (1)
+    {
+        // Reset the watchdog once every iteration of the loop.
+        watchdog_reset();
 
-    // Check if a LED1 event has occurred, store the new state in EEPROM if
-    // true.
-    if (led1_event) {
-      const uint8_t led_state =
-          led1.read(&led1) ? EEPROM_LED1_ON : EEPROM_LED1_OFF;
-      eeprom_write(&led_state, sizeof(led_state), EEPROM_LED1_ADDR);
-      led1_event = false;
+        // Check if a LED1 event has occurred, store the new state in EEPROM if true.
+        if (led1_event)
+        {
+            const uint8_t led_state = led1.read(&led1) ? EEPROM_LED1_ON : EEPROM_LED1_OFF;
+            eeprom_write(&led_state, sizeof(led_state), EEPROM_LED1_ADDR);
+            led1_event = false;
 
-      // Report the new LED1 state over UART.
-      print_led1_state();
+            // Report the new LED1 state over UART.
+            print_led1_state();
+        }
     }
-  }
-  return 0;
+    return 0;
 }
