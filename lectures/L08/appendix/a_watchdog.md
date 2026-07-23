@@ -389,6 +389,13 @@ but roughly every 1024 ms the chip reboots on its own, visible as `setup()`'s LE
 firing over and over in the serial monitor even with nobody touching the button. That's A.1's
 watchdog doing exactly what it's for: the timeout wasn't pet in time, so it fired.
 
+This is the one experiment in the course that's simpler to run in the simulator than on the board,
+and it's worth doing even if you have hardware: no reflashing between the two versions and no
+serial monitor to wire up, so the before-and-after is seconds apart instead of minutes. Petting the
+watchdog gives one state report and then silence; starving it gives the same report over and over.
+See [Simulating the demos with simavr](../../../info/simulating_with_simavr.md), which walks
+through this demo specifically.
+
 Build and flash the same way as
 [L06 Appendix A.6](../../L06/appendix/a_uart.md#a6-example-button-toggles-an-led-reports-over-serial):
 on Linux, `cd ../watchdog_driver_demo` and run `make` (`make flash` to program the board); on

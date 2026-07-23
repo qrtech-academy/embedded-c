@@ -72,3 +72,12 @@ lectures/    Lecture READMEs, appendices, exercises, and worked hardware demos, 
 ```
 
 ---
+
+## No Hardware Yet?
+Every worked demo in this repo can also be run on your host machine under the
+[simavr](https://github.com/buserror/simavr) simulator, including UART output, button presses,
+EEPROM persistence and `avr-gdb` debugging. See
+[info/simulating_with_simavr.md](info/simulating_with_simavr.md). It is a way to keep moving until
+you have a board, not a replacement for one.
+
+---
