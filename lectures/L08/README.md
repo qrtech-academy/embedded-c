@@ -28,6 +28,10 @@
 
 ### After the lecture
 * Work through the exercises in [Appendix B](./appendix/b_exercises.md).
+* The watchdog is the one topic in this course that's simpler to observe in simulation than on
+  hardware: starve `watchdog_reset()` and the reboot loop shows up immediately, with no reflashing
+  and no serial monitor. Worth doing even with a board to hand, and the only option without one.
+  See [Simulating the demos with simavr](../../info/simulating_with_simavr.md).
 
 ---
 
