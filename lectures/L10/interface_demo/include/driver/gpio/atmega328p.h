@@ -16,4 +16,4 @@
  *
  * @return The new GPIO instance, or a nullptr on failure.
  */
-gpio_interface_t *gpio_atmega328p_new(uint8_t pin, gpio_mode_t mode);
+gpio_interface_t* gpio_atmega328p_new(uint8_t pin, gpio_mode_t mode);

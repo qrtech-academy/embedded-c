@@ -15,7 +15,7 @@
  *
  * @return Number of bytes written, or -1 on failure.
  */
-int16_t eeprom_write(const uint8_t *buf, uint16_t buflen, uint16_t addr);
+int16_t eeprom_write(const uint8_t* buf, uint16_t buflen, uint16_t addr);
 
 /**
  * @brief Read data from EEPROM.
@@ -26,6 +26,6 @@ int16_t eeprom_write(const uint8_t *buf, uint16_t buflen, uint16_t addr);
  *
  * @return Number of bytes read, or -1 on failure.
  */
-int16_t eeprom_read(uint8_t *buf, uint16_t buflen, uint16_t addr);
+int16_t eeprom_read(uint8_t* buf, uint16_t buflen, uint16_t addr);
 
 #endif /** DRIVER_EEPROM_H_ */
