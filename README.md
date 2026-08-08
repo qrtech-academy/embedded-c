@@ -63,12 +63,32 @@ After completing the course, participants should be able to:
 
 ---
 
+## Two Written Papers, and What They Are Not
+
+Nothing in this course is marked. Assessment is the exercise set after every lecture, and the
+Evaluation questions that close every lecture README.
+
+[`exam/`](./exam/README.md) holds two three-hour papers with worked solutions, and they check
+something else: **what you can reconstruct on paper, with nothing in front of you.** Eight questions
+each, mixing theory with C you either read and repair or write from scratch, and no compiler,
+datasheet or board in the room to tell you which it is.
+
+**They exist purely so that participants can test their own knowledge after the course. They gate
+nothing, they are not a qualification, and no part of the course requires them.** Nothing in this
+repository depends on them, and neither `make build` nor `make format-check` knows they exist.
+
+**Take one after the course is over.** Both papers draw on all ten lectures, so sitting one partway
+through examines material nobody has taught you yet.
+
+---
+
 ## Structure
 
 ```text
 ci/          CI scripts (build and format checks).
 info/        Course info: instructor, course plan, and per-lecture topic breakdown.
 lectures/    Lecture READMEs, appendices, exercises, and worked hardware demos, L01-L10.
+exam/        Two written papers and their solutions. Optional, and marked by nobody here.
 ```
 
 ---
