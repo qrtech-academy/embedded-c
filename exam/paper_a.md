@@ -30,7 +30,7 @@ brace in the wrong column costs nothing. A missing `volatile` costs everything.
 * `snake_case` for variables, functions and constants; `UPPER_CASE` for macros and enum constants.
 * `static` on anything that is not part of a module's public API.
 * A header guard named after the file in `UPPER_CASE`, `.` replaced by `_`, trailing `_`
-  (`gpio.h` → `DRIVER_GPIO_H_`).
+  (`driver/gpio.h` → `DRIVER_GPIO_H_`).
 * A Doxygen comment in the imperative mood above every non-trivial function.
 * `self` as the first parameter of any function operating on a driver struct, always a pointer, and
   `const` when the function only reads through it.
@@ -160,8 +160,8 @@ int main(void)
 }
 ```
 
-**(a)** The program compiles without a warning and does nothing at all. It contains **four**
-defects. Identify each one, state the consequence, and give the corrected line. (6 marks)
+**(a)** The program compiles and does nothing at all. It contains **four** defects. Identify each
+one, state the consequence, and give the corrected line. (6 marks)
 
 **(b)** Give the single C expression for each of the following on a register `reg` and a bit
 position `n`: set the bit, clear the bit, test the bit, and toggle the bit. Then state why this
@@ -169,7 +169,7 @@ course toggles an output by writing to `PINx` rather than by `PORTx ^= (1U << n)
 buys. (3 marks)
 
 **(c)** State what `F_CPU` is for, what must be true about *where* it is defined, and what the `UL`
-suffix prevents on this target. Then state why `_delay_ms(ms)` cannot be called with a variable, and
+suffix does on this target. Then state why `_delay_ms(ms)` cannot be called with a variable, and
 what the course's `delay_ms()` helper does about it. (3 marks)
 
 ---
@@ -321,7 +321,6 @@ static void serial_init(void)
 static void serial_write_byte(const uint8_t byte)
 {
     UDR0 = byte;
-    while (0U == (UCSR0A & (1U << UDRE0))) {}
 }
 
 void serial_print(const char* text)
@@ -381,7 +380,8 @@ one and state the consequence, then give the corrected function. One of the four
 that appears only occasionally; say which, and why that is worse than one that never works at all.
 (5 marks)
 
-**(b)** The watchdog code below has no effect whatsoever.
+**(b)** The watchdog code below is meant to arm a 1024 ms watchdog and to pet it once per iteration
+of `main()`'s loop. It does neither.
 
 ```c
 static void watchdog_init(void)
@@ -400,8 +400,8 @@ the second, state why it cannot be written as a register access at all, and what
 instead of `asm("wdr")`, with the reason. (4 marks)
 
 **(c)** A device with a watchdog reboots once because of a genuine hang. From then on, a colleague's
-attempt to disable the watchdog from `setup()` is ignored, and the board reboots roughly once a
-second forever.
+attempt to disable the watchdog from `setup()` is ignored, and the board keeps rebooting, many times
+a second, forever.
 
 Name the flag responsible, name the register it lives in, and explain the mechanism. State where
 the fix goes and why its position matters. Then state what `WDE` and `WDIE` each select, and what
@@ -631,7 +631,7 @@ roughly 100,000 write cycles.
 | `WDT_vect` | Watchdog interrupt vector. |
 
 `WDE` is the watchdog enable, `WDIE` the watchdog interrupt enable, and `WDCE` the change enable
-used when reconfiguring them. `WDP3:WDP0` select the timeout: `0000` is 16 ms, and each step doubles
-it, up to `1001` = 8192 ms.
+used when reconfiguring the watchdog. `WDP3:WDP0` select the timeout: `0000` is 16 ms, and each step
+doubles it, up to `1001` = 8192 ms.
 
 ---

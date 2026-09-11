@@ -43,10 +43,11 @@ whole body:
 
 **The hazard parentheses cannot remove: multiple evaluation.** A macro parameter is substituted at
 every point its name appears in the body, so an argument with a side effect happens once per
-appearance. `SQUARE(x) ((x) * (x))` is fully parenthesised and `SQUARE(i++)` still increments `i`
-twice, with the order of the two reads unspecified. A real function evaluates its argument exactly
-once. `DUTY_PERCENT` names `on_ms` only once, so it escapes this particular time — but that is a
-property of this body, not a guarantee, and it changes the day somebody adds a second use.
+appearance. `SQUARE(x) ((x) * (x))` is fully parenthesised and `SQUARE(i++)` still modifies `i`
+twice, with nothing to order the two, which is undefined behaviour. A real function evaluates its
+argument exactly once. `DUTY_PERCENT` names `on_ms` only once, so it escapes this particular time —
+but that is a property of this body, not a guarantee, and it changes the day somebody adds a second
+use.
 *(0.5 marks)*
 
 *Credit as an alternative third answer: a macro has no type, so nothing checks what is passed in,
@@ -110,9 +111,11 @@ its value between calls and is initialised once. `static uint8_t ovf_count = 0U;
 **Why `#define` for pin numbers**, any two of:
 
 * **A `const` variable in C is not a constant expression.** Its value cannot change at runtime, but
-  the language still refuses it anywhere a *constant expression* is required: an array bound, a
-  `case` label, a `#if`. A macro (or an `enum` constant) works in all of them. This is the real
-  reason embedded C keeps reaching for `#define` and not merely habit.
+  the language still refuses it anywhere a *constant expression* is required: the size of a
+  file-scope array, a `case` label, a `#if`. A macro works in all of them; an `enum` constant works
+  in the first two but not in `#if`, because the preprocessor runs before the compiler and knows
+  nothing about enums. This is the real reason embedded C keeps reaching for `#define` and not
+  merely habit.
 * **Code generation.** With `LED1` a literal, `PORTB |= (1U << LED1)` folds at compile time into a
   single bit-set instruction. With `LED1` a `const uint8_t` variable, the shift amount is, as far as
   the language is concerned, only known at runtime, so nothing stops the compiler emitting an actual
@@ -182,6 +185,10 @@ program writes zero.** Neither LED is ever configured as an output, the pull-up 
 and `(1U << BTN1)` is a zero mask, so the button test can never be true. This alone accounts for the
 program doing nothing.
 
+The compiler does notice the three plain assignments: avr-gcc warns `large integer implicitly
+truncated to unsigned type` (`-Woverflow`, on by default), which the course's `-Werror` would turn
+into a failed build. The test, the `|=` and the `&=` compile silently.
+
 ```c
 #define LED1 1U // D9  -> PORTB1.
 #define LED2 2U // D10 -> PORTB2.
@@ -221,6 +228,12 @@ off. The clear-bit idiom is AND with the *negated* mask.
 else { PORTB &= ~(1U << LED1); }
 ```
 
+*A candidate who also objects to enabling the internal pull-up at all, against an external
+pull-down, is right: the two form a divider that holds the idle pin near 1.1 V with a typical
+pull-up, and only a typical one keeps it safely below the 1.5 V a `0` needs. Credit it, but not in
+place of one of the four; the course's own programs enable it too, and it is not why this one does
+nothing.*
+
 ### (b) 3 marks
 
 | Operation | Expression |
@@ -251,8 +264,12 @@ otherwise the header has already been expanded against its own fallback and ever
 program is wrong by whatever ratio.
 *(1 mark)*
 
-**The `UL` suffix makes the literal `unsigned long`.** `int` is 16 bits on AVR, so an unsuffixed
-`16000000` does not fit the type the literal would otherwise take and the value is truncated.
+**The `UL` suffix makes the literal an `unsigned long`, explicitly.** `int` is only 16 bits on AVR,
+far too small for 16,000,000. The value would not be truncated without the suffix: C gives an
+unsuffixed decimal constant the first of `int`, `long` and `long long` that can hold it, so
+`16000000` would quietly become a 32-bit signed `long`. `UL` states the type rather than leaving it
+to that rule, so every calculation built on `F_CPU`, a delay's loop count or a baud-rate divisor, is
+done in 32-bit unsigned arithmetic by design rather than by accident.
 *(1 mark)*
 
 **Why `_delay_ms()` cannot take a variable.** The same compile-time computation: `_delay_ms()`
@@ -309,9 +326,9 @@ iteration thereafter. The loop then runs forever on a stale `false`. Declare it
 **4. `serial_print()` is called from inside the ISR.**
 
 `serial_write_byte()` blocks on `UDRE0` for each byte. At 9600 baud a 15-byte message (13 characters
-plus `\r\n`) is 150 bit-times, about **15.6 ms**, and for that entire time every other interrupt on
-the chip is held off — including the debounce timer a program like this depends on. An ISR should
-flip a flag and return; the transmission belongs in `main()`'s loop:
+plus `\r\n`) is 150 bit-times, about **15.6 ms**, and for nearly all of that time every other
+interrupt on the chip is held off — including the debounce timer a program like this depends on. An
+ISR should flip a flag and return; the transmission belongs in `main()`'s loop:
 
 ```c
 ISR(INT0_vect)
@@ -383,8 +400,12 @@ marks it `volatile` as a habit and says so explicitly; the moment anything outsi
 read it, the qualifier stops being decoration.
 *(1 mark)*
 
-*Contrast with `led_state`/`led1_lit` in the same appendix, which are shared between two different
-ISRs and genuinely do need it.*
+*Credit equally `led_state` in the same appendix's Timer 1 example, which is genuinely shared: the
+button's ISR writes it and the timer's ISR reads it. On the AVR an ISR runs to completion with
+interrupts disabled, so nothing can change `led_state` in the middle of either handler, and each
+reads it afresh every time it runs; the appendix keeps `volatile` on it by the course's rule, and
+it becomes load-bearing the moment `main()`'s loop reads it too. `led1_lit`, touched only by the
+timer's ISR, is the same case as `ovf_count`.*
 
 ---
 
@@ -419,8 +440,8 @@ ADCSRA = (1U << ADEN) | (1U << ADSC) | (1U << ADPS0) | (1U << ADPS1) | (1U << AD
 
 `ADCSRA = (1U << ADIF);` executes immediately after the start, so the result registers are read
 while the conversion is still in flight; what comes back belongs to a previous conversion or to
-nothing. Worse, that plain assignment also clears `ADEN` and `ADSC`, so it *aborts* the conversion
-it just started. The flag must be polled first and only then cleared:
+nothing. Worse, that plain assignment also writes `0` to `ADEN`, switching the ADC off, which
+*aborts* the conversion it just started. The flag must be polled first and only then cleared:
 
 ```c
 while (0U == (ADCSRA & (1U << ADIF))) {}
@@ -433,6 +454,12 @@ Reading `ADCL` first locks both result registers against update until `ADCH` has
 the pair is guaranteed to come from the same conversion. Reading `ADCH` first leaves that lock
 unarmed: a conversion completing between the two reads tears the result, and the two halves end up
 belonging to different samples.
+
+In this function the wrong order does something worse, and it fits the symptom. The last read is
+`ADCL`, so the function returns with the result registers still locked, and a conversion that
+completes while they are locked is lost: neither register is updated. The next call then reads the
+previous conversion's result again, and re-arms the lock as it goes. The numbers stay plausible and
+stop tracking the potentiometer.
 
 Separately, `high` is a `uint8_t`, so `high << 8U` promotes it to a 16-bit *signed* `int` and shifts
 there; the `(uint16_t)` cast is applied to the result, too late to have protected anything. The cast
@@ -592,12 +619,13 @@ opened there sees nothing but garbage.
 #define BAUD 103U // UBRR value for 9600 bps with a 16 MHz clock.
 ```
 
-**2. `serial_write_byte()` writes `UDR0` before waiting on `UDRE0`.**
+**2. `serial_write_byte()` never waits on `UDRE0`.**
 
-The wait exists to establish that the data register is free. Performing it *after* the write means
-the very first byte can be written while a previous one is still being shifted out, overwriting it,
-and thereafter every wait is one byte out of step with the write it is supposed to guard. Bytes are
-dropped. The order is not interchangeable:
+`UDR0` can take a new byte only while `UDRE0` says it is free, and a byte written to it while
+`UDRE0` is clear is ignored by the transmitter. The loop in `serial_print()` hands bytes over a few
+CPU cycles apart, while at 9600 baud each one takes over a millisecond to send, so only the first
+byte or two of each message reach the line and the rest are silently dropped. The wait belongs
+before the write, so that every byte finds the register free:
 
 ```c
 static void serial_write_byte(const uint8_t byte)
@@ -637,8 +665,9 @@ void serial_print(const char* text)
 
 **4. The transmission happens inside the ISR.**
 
-`serial_write_byte()` blocks on `UDRE0` once per byte. At 9600 baud, 15 bytes is 150 bit-times,
-about **15.6 ms**, and the ISR holds off every other interrupt for the whole of it — including the
+Once `serial_write_byte()` waits on `UDRE0` as it must, it blocks once per byte. At 9600 baud, 15
+bytes is 150 bit-times, about **15.6 ms**, and the ISR holds off every other interrupt for nearly
+the whole of it — including the
 debounce timer this pattern normally depends on, so presses arriving during the message are lost.
 The handler should flag the event and return; `main()`'s loop does the printing.
 
@@ -765,18 +794,21 @@ half a mark.)*
 
 **`watchdog_init()`: the timed sequence is missing.** *(1 mark)*
 
-`WDE` and the prescaler bits are protected exactly as EEPROM's `EEPE` is, and for a sharper reason:
-the interlock exists so that runaway code cannot accidentally switch off the one thing meant to
-catch it. `WDCE` must be set together with `WDE` first, and the real configuration written within
-four cycles. Without the unlock, the hardware ignores the write outright — the watchdog is never
-enabled, the timeout is never set, and nothing reports a problem.
+Switching the watchdog *on* is always allowed: a write that sets `WDE` takes effect with no unlock.
+What is protected, exactly as EEPROM's `EEPE` is, is clearing `WDE` and changing the prescaler bits,
+and for a sharper reason: the interlock exists so that runaway code cannot accidentally switch off
+or reconfigure the one thing meant to catch it. `WDCE` must be set together with `WDE` first, and
+the real configuration written within four cycles. Without the unlock, the write enables the
+watchdog but the prescaler bits keep their reset value, `0000`: the watchdog runs with a 16 ms
+timeout instead of 1024 ms, and nothing reports a problem.
 
 **`watchdog_reset()`: petting the watchdog is not a register write at all.** *(1 mark)*
 
 `WDE` is the enable bit. Setting an already-set bit changes nothing and does not restart the
 countdown. The countdown is restarted by a dedicated CPU instruction, `WDR`, which no assignment to
-any register produces. As written, the watchdog is never pet, so the moment it *is* correctly
-enabled the chip resets every timeout period.
+any register produces. As written, the watchdog is never pet. With the 16 ms watchdog that
+`watchdog_init()` did switch on, the chip resets 16 ms after every boot, in an endless boot loop;
+with `watchdog_init()` corrected, it resets every 1024 ms instead.
 
 **Corrected:** *(1 mark)*
 
@@ -819,8 +851,10 @@ builds with `-std=c11`, strict ISO C, where `asm` is not a keyword and the line 
 **The mechanism.** *(1.5 marks)* A watchdog-caused reset sets `WDRF`, and while `WDRF` is set, `WDE`
 **reads back as set no matter what is written to it**. Every attempt to clear `WDE` — or to disable
 the watchdog by any other route — therefore does nothing at all, silently, and the watchdog stays
-armed and fires again one timeout later. That is the boot loop the colleague is seeing: the chip
-resets, `WDRF` is set again by that very reset, and the disable is refused again on the next boot.
+armed and fires again one timeout later. After a watchdog reset that timeout is the shortest, 16 ms,
+because the reset cleared the prescaler bits, which is why the board resets many times a second.
+That is the boot loop the colleague is seeing: the chip resets, `WDRF` is set again by that very
+reset, and the disable is refused again on the next boot.
 
 It is deliberate. It stops a chip that has just failed and reset from immediately switching off the
 safety net that caught it, which is precisely the failure mode a watchdog exists for.
@@ -832,10 +866,15 @@ MCUSR &= ~(1U << WDRF); // Clear the flag; WDE cannot be cleared while it is set
 ```
 
 It must be the **first** line of `setup()`, unconditionally, before anything else touches `WDTCSR`.
-Anything in between that tries to reconfigure the watchdog is silently ignored, so a clear placed
-later does not undo those writes — they are simply lost. It cannot be made conditional on "did we
-just reset", either: the reset that armed the lockout may have been the previous power cycle's, and
-the flag persists across it.
+Anything in between that tries to switch the watchdog off is silently ignored, so a clear placed
+later does not undo those writes — they are simply lost. The watchdog must then be configured, with
+the timeout actually wanted, or switched off, straight after the clear and still before anything
+slow: after a watchdog reset it is running with that 16 ms timeout, and a `setup()` that first
+spends 16 ms on something else (printing one line at 9600 baud takes that long) is reset before it
+gets there. That is why the course's `watchdog_init()` clears `WDRF` and then configures the
+watchdog, and is called first thing in `setup()`. Clearing the flag unconditionally costs nothing
+and needs no knowledge of why the chip reset; a program that wants to know reads `MCUSR` into a
+variable first.
 
 **`WDE` and `WDIE`.** *(1 mark)*
 
@@ -937,8 +976,9 @@ if (!output) { return; }
 
 **What goes where.** `gpio.h` is the public interface: the include guard, the `gpio_t` and
 `gpio_mode_t` type definitions, and a documented prototype for every function callers are allowed to
-use. `gpio.c` includes its own header first, then defines those same functions in the order the
-header declares them; anything not in the header is `static` and lives at the bottom of the file.
+use. `gpio.c` includes its own header, after the standard and AVR headers, then defines those same
+functions in the order the header declares them; anything not in the header is `static` and lives
+at the bottom of the file.
 *(1 mark)*
 
 **Why `gpio_t` has to be in the header, unlike anything in `sensor.h`.** Callers of `sensor.h` only
@@ -1073,8 +1113,9 @@ intended. The compiler has no way to know `gpio_impl_t` was *meant* to begin wit
 identical for every `gpio_impl_t` ever created. All per-instance state lives in the concrete
 struct's own fields, which each function reaches by casting `self` back. So a single
 `static const gpio_vtable_t` inside the accessor is enough, and every instance's `itf.vptr` points
-at that same address: one pointer per object rather than four, and `const` lets the table live in
-flash rather than RAM.
+at that same address: one pointer per object rather than four. (`const` does not put the table in
+flash on the ATmega328P: avr-gcc copies read-only data into RAM at startup unless it is marked
+`PROGMEM`, so the single shared table costs its 8 bytes of RAM once, not once per instance.)
 *(1 mark)*
 
 **Why `del()` takes `gpio_interface_t**`.** So that it can `free()` the instance *and* null out the

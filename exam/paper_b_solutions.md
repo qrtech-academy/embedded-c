@@ -83,9 +83,9 @@ takes an explicit value, has answered better.)*
 expression.** A `const` variable in C cannot change at runtime, but the language still refuses it
 anywhere a *constant expression* is required — an array bound, a `case` label, a `#if`. A macro
 works in all of them, and folds into the generated code, so `PORTB |= (1U << LED1)` becomes a single
-bit-set instruction rather than a runtime shift. (An `enum` constant has this property too, which is
-why the course reaches for an enum wherever a named set fits and for a macro where a bare number is
-needed.)
+bit-set instruction rather than a runtime shift. (An `enum` constant has this property too, except
+in `#if`, which the preprocessor evaluates before any enum exists; that is why the course reaches
+for an enum wherever a named set fits and for a macro where a bare number is needed.)
 *(1 mark)*
 
 ### (b) 3 marks
@@ -117,7 +117,8 @@ TICKS_NEEDED(TIMEOUT_MS + MARGIN_MS, 4U)
 
 **The third hazard: multiple evaluation.** A parameter's text is substituted at *every* point its
 name appears in the body, so an argument with a side effect happens once per appearance, in an
-unspecified order. A real function evaluates each argument exactly once.
+unspecified order (and for an argument like `i++`, two unsequenced changes to one variable are
+undefined behaviour). A real function evaluates each argument exactly once.
 
 **This macro is not exposed to it**, because each parameter appears exactly once in the body. That
 is a property of this particular body, not a guarantee the macro mechanism offers: the moment
@@ -246,11 +247,9 @@ static const uint8_t leds[LED_COUNT] = {LED1, LED2, LED3};
  */
 static void setup(void)
 {
-    // Configure LED1 - LED3 as outputs.
+    // Configure LED1 - LED3 as outputs. BTN1 needs no configuration: it is an input
+    // out of reset, and its external pull-down defines the idle level.
     DDRB = LED_MASK;
-
-    // Configure BTN1 as input with its internal pull-up enabled.
-    PORTB = (1U << BTN1);
 }
 
 /**
@@ -309,7 +308,10 @@ int main(void)
 *(5 marks, distributed: 1 for the correct port bit positions — D8/D9/D10 are `PORTB0`/`PORTB1`/
 `PORTB2` and D12 is `PORTB4`, not 8/9/10/12; 1 for `F_CPU` defined before `<util/delay.h>` and the
 `delay_ms()` loop; 1 for reading the button from `PINB`; 1 for `LEDS_OFF` clearing with `~` and
-leaving the pull-up bit alone; 1 for the chase advancing and resetting correctly.)*
+leaving the rest of the port alone; 1 for the chase advancing and resetting correctly.)*
+
+*Do not deduct for enabling BTN1's internal pull-up the way L02's examples do; part (c) is about
+why that is harmless only in practice.*
 
 **Worth noting in a strong answer:** `run_chase_step()` blocks for the full 150 ms, so a release is
 only noticed at the top of the next iteration — up to 150 ms late. That is the same blocking
@@ -358,17 +360,19 @@ pin's **internal pull-up resistor**. It does not read anything and it does not d
 logic level present on each of port B's pins, whatever their direction.
 *(1.5 marks)*
 
-**The appendix's circuit.** One leg of the button goes to 5 V, a 10 kΩ resistor runs from that same
-leg to ground, and D13 is tapped between the two — an **external pull-down**. So the pin reads `0`
-when idle and `1` while the button is held, the opposite way round from the internal-pull-up
-convention.
+**The appendix's circuit.** One leg of the button goes to 5 V; the other goes to D13 and, through a
+10 kΩ resistor, to ground — an **external pull-down**. So the pin reads `0` when idle and `1` while
+the button is held, the opposite way round from the internal-pull-up convention.
 
-`PORTB = (1U << BTN1);` enables the AVR's internal pull-up on that pin anyway. It is **harmless
-rather than contradictory**: the internal pull-up is weak, tens of kΩ, and the external 10 kΩ
-resistor dominates the divider, so the idle level stays at ground and the reading is unchanged. It
-is there so that `PORTx`'s input-mode behaviour is exercised somewhere visible, not because this
-particular circuit needs it — and a candidate who says the circuit would work identically without
-that line is right.
+`PORTB = (1U << BTN1);` enables the AVR's internal pull-up on that pin anyway, and the pull-up and
+the external pull-down now form a voltage divider. It is **harmless in practice**: with the
+pull-up's typical value of about 35 kΩ the idle pin sits at 5 V × 10 / (10 + 35) ≈ 1.1 V, below the
+0.3 × 5 V = 1.5 V under which a pin is guaranteed to read `0`, so the reading is unchanged. It is
+**not guaranteed**, though: the datasheet only promises 20-50 kΩ, and at 20 kΩ the idle pin rises to
+5 V × 10 / 30 ≈ 1.7 V, where the reading is undefined. The write is there so that `PORTx`'s
+input-mode behaviour is exercised somewhere visible, not because this particular circuit needs it —
+a candidate who says the circuit would work identically without that line, and that a design of
+their own should not enable a pull-up against an external pull-down, is right.
 *(1.5 marks)*
 
 ---
@@ -505,10 +509,11 @@ if (btn1_event)
 }
 ```
 
-**What `volatile` is doing:** the flag is written only inside the ISR and read only inside `main()`'s
-loop, and the compiler cannot see that an interrupt exists. Without `volatile` it is entitled to
-assume nothing in the loop changes `btn1_event`, load it once into a register before the loop, and
-test that stale `false` on every iteration forever. `volatile` forces every read back to memory.
+**What `volatile` is doing:** the flag is set inside the ISR and read (and cleared) inside
+`main()`'s loop, and the compiler cannot see that an interrupt exists. Without `volatile` it is
+entitled to assume nothing in the loop changes `btn1_event`, load it once into a register before the
+loop, and test that stale `false` on every iteration forever. `volatile` forces every read back to
+memory.
 
 ---
 
@@ -526,7 +531,7 @@ test that stale `false` on every iteration forever. `volatile` forces every read
  */
 static uint16_t adc_read(const uint8_t channel)
 {
-    // Use the internal voltage reference and select the ADC channel to read.
+    // Use AVCC as the voltage reference and select the ADC channel to read.
     ADMUX = (1U << REFS0) | channel;
 
     // Enable the ADC, start a conversion, use a prescaler of 128.
@@ -535,7 +540,7 @@ static uint16_t adc_read(const uint8_t channel)
     // Wait for the conversion to complete.
     while (0U == (ADCSRA & (1U << ADIF))) {}
 
-    // Restore the ADC interrupt flag for the next conversion, then return the result.
+    // Clear the ADC interrupt flag for the next conversion, then return the result.
     ADCSRA = (1U << ADIF);
     return ADC;
 }
@@ -640,17 +645,17 @@ division and yields 0 for every reading below 1023. A candidate who writes
 this target, provided they note that the product must not overflow 16 bits.)*
 
 **Why `+ 0.5F`.** *(1 mark)* The cast to `uint8_t` truncates towards zero. Adding a half before it
-turns truncation into round-to-nearest. Without it, a duty cycle of 0.99 gives `9.9` → `9`, so the
-LED never reaches full brightness and the entire scale is biased low by up to one millisecond in
-ten — a systematic error, not a rounding one.
+turns truncation into round-to-nearest. Without it, a duty cycle of 0.99 gives `9.9` → `9`: the LED
+reaches full brightness only at a reading of exactly 1023, and the entire scale is biased low by up
+to one millisecond in ten — a systematic error, not a rounding one.
 
 **What it costs, and what replaces it.** *(1 mark)* `delay_ms()` is built on `_delay_ms()`, which
 busy-waits. The routine therefore blocks for the whole 10 ms period, every period, so the CPU is
 doing nothing else for 100 % of the time — no button polling, no other work — and only interrupts
-still get through. L05's timers replace it: a hardware timer counts on its own, raises an interrupt,
-and the handler counts overflows and drives the pin, leaving `main()`'s loop free. (The chip also
-has dedicated PWM output hardware; the course builds the equivalent out of the timer's
-overflow-counting pattern instead.)
+still get through. L05's timers are the way out: a hardware timer counts on its own and raises an
+interrupt when a period has passed, so the pin can be switched from the handler and `main()`'s loop
+is free in between instead of spinning inside `_delay_ms()`. (The timers can also generate PWM
+entirely in hardware, which the course does not cover.)
 
 ---
 
@@ -819,10 +824,11 @@ int main(void)
 }
 ```
 
-**What `volatile` is doing:** each flag is written only inside an ISR and read only inside `main()`'s
-loop. The compiler cannot see that interrupts exist, so without `volatile` it is entitled to load
-each flag once into a register before the loop and test that stale `false` forever. The program then
-compiles cleanly, works at `-O0`, and stops responding the moment optimisation is turned up.
+**What `volatile` is doing:** each flag is set inside an ISR and read (and cleared) inside
+`main()`'s loop. The compiler cannot see that interrupts exist, so without `volatile` it is entitled
+to load each flag once into a register before the loop and test that stale `false` forever. The
+program then compiles cleanly, works at `-O0`, and stops responding the moment optimisation is
+turned up.
 
 **`read()`'s `timeout_ms`, and its return values.** *(1 mark)*
 
@@ -940,6 +946,9 @@ typedef enum
  */
 static void watchdog_init(const watchdog_timeout_t timeout)
 {
+    // Clear the reset flag before anything else touches the watchdog.
+    MCUSR &= ~(1U << WDRF);
+
     cli();
     WDTCSR |= (1U << WDCE) | (1U << WDE);      // Unlock the timed sequence.
     WDTCSR = (1U << WDE) | (uint8_t)(timeout); // Enable the watchdog with the given timeout.
@@ -947,7 +956,10 @@ static void watchdog_init(const watchdog_timeout_t timeout)
 }
 ```
 
-*(2 marks: 1 for the enum, 1 for the function with its unlock and its `cli()`/`sei()`.)*
+*(2 marks: 1 for the enum, 1 for the function with the `WDRF` clear, its unlock and its
+`cli()`/`sei()`. `WDRF` comes first because `WDE` cannot be cleared while it is set, and
+`watchdog_init()` is called first in `setup()`: after a watchdog reset the watchdog is still
+running, at its 16 ms timeout.)*
 
 **Why eight members can default and two cannot.** *(1 mark)* The enumerator's value is written
 straight into `WDTCSR`'s prescaler bits, so it has to be the register encoding, not an index.
@@ -971,9 +983,10 @@ window in which `WDE` and the prescaler bits may actually be changed.
 
 **If the second write comes too late.** *(0.5 marks)* The hardware closes the window — clearing
 `WDCE` after four cycles — and the write is simply ignored. There is no error and no diagnostic; the
-watchdog keeps whatever configuration it had, which out of reset means disabled. A program that gets
-this wrong looks exactly like a program with no watchdog in it, which is why the `cli()`/`sei()`
-pair around the sequence is not optional.
+watchdog keeps whatever configuration it had. After a power-on reset that means disabled, so the
+program looks exactly like a program with no watchdog in it; after a watchdog reset it means still
+running at 16 ms, so the chip resets again and again. That is why the `cli()`/`sei()` pair around
+the sequence is not optional.
 
 ### (c) 4 marks
 
@@ -1182,10 +1195,11 @@ through `self`, so `const gpio_t*` documents that and lets the compiler reject a
 state would write to `self`'s own fields — so it cannot make that promise.
 
 **If either took `gpio_t self` by value.** *(0.5 marks)* Every call would copy the whole struct —
-three pointers plus a byte, on a target with 2 KB of RAM — for no benefit. `gpio_read()` would still
-*work*, because it reads through the copied pointers and those point at the same registers.
-`gpio_init()` would not work at all: its entire job is to fill in the caller's instance, and every
-field it set would be discarded at the closing brace, leaving the caller's `gpio_t` exactly as
+three pointers plus a byte, on a target with 2 KB of RAM — for no benefit. `gpio_read()` and
+`gpio_write()` would both still *work*, because they read and write through the copied pointers and
+those point at the same registers. What breaks is a function whose job is to change `self`'s own
+fields: `gpio_init()` would not work at all. Its entire job is to fill in the caller's instance, and
+every field it set would be discarded at the closing brace, leaving the caller's `gpio_t` exactly as
 uninitialised as before, with no diagnostic.
 
 ### (c) 3 marks
@@ -1468,8 +1482,9 @@ whatever happens to be at offset 0 and the first call through it jumps to a garb
 nothing else — there is nothing instance-specific in it, because all per-instance state lives in
 `gpio_stub_t`'s own fields, which each function reaches by casting `self` back. One
 `static const gpio_vtable_t` inside the accessor therefore serves every stub ever created: each
-instance carries one pointer rather than four copies of the table, and `const` lets the table live
-in flash rather than RAM.
+instance carries one pointer rather than four copies of the table. (`const` does not put the table
+in flash on the ATmega328P: avr-gcc copies read-only data into RAM at startup unless it is marked
+`PROGMEM`, so the single shared table costs its 8 bytes of RAM once, not once per instance.)
 
 **What the stub makes possible.** *(0.5 marks)* Everything written against `gpio_interface_t*` can
 now be built and run with no chip attached: unit tests on a host, logic driven by simulated inputs

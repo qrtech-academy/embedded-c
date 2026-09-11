@@ -30,7 +30,7 @@ brace in the wrong column costs nothing. A missing `volatile` costs everything.
 * `snake_case` for variables, functions and constants; `UPPER_CASE` for macros and enum constants.
 * `static` on anything that is not part of a module's public API.
 * A header guard named after the file in `UPPER_CASE`, `.` replaced by `_`, trailing `_`
-  (`gpio.h` → `DRIVER_GPIO_H_`).
+  (`driver/gpio.h` → `DRIVER_GPIO_H_`).
 * A Doxygen comment in the imperative mood above every non-trivial function.
 * `self` as the first parameter of any function operating on a driver struct, always a pointer, and
   `const` when the function only reads through it.
@@ -114,7 +114,7 @@ both, and state which register must be read to get a pin's actual level.
 
 The button circuit in the appendix uses an external 10 kΩ pull-down, yet the code still writes
 `PORTB = (1U << BTN1);`. State what that write does, what the pin reads when idle, and why the write
-is harmless rather than contradictory. (3 marks)
+is harmless in practice but not guaranteed to be. (3 marks)
 
 ---
 

@@ -61,10 +61,10 @@ roughly half are for reading or writing C on paper.
 The two papers differ in which half they lean on:
 
 * **Paper A leans towards code that is put in front of you.** All eight of its questions hand you a
-  snippet that compiles without a warning and is wrong: a macro whose missing parentheses silently
-  turn 50 into 32, a `free()` that leaves the caller holding the freed address, a `setup()` that
-  writes board pin numbers where port bit positions belong and therefore writes zero to every
-  register, an interrupt armed at the peripheral but never enabled globally, an ADC read with no
+  snippet that compiles and is wrong: a macro whose missing parentheses silently turn 50 into 32, a
+  `free()` that leaves the caller holding the freed address, a `setup()` that writes board pin
+  numbers where port bit positions belong and therefore writes zero to every register, an interrupt
+  armed at the peripheral but never enabled globally, an ADC read with no
   reference and no wait, a UART driver with the baud *rate* written into `UBRR0`, an EEPROM write
   with `EEPE` set before `EEMPE`, a watchdog "pet" that sets a bit instead of executing an
   instruction, a `gpio_toggle()` that uses `^=` on `PINx`, and a vtable whose interface field is not
@@ -129,7 +129,7 @@ Three conventions worth agreeing before a paper is marked:
   whether a candidate walks into a specific mistake: reading a button from `PORTx`, a `1U << 9U`
   written to an 8-bit register, a plain `=` where `|=` was needed, an ISR-shared flag without
   `volatile`, `EEPE` before `EEMPE`, a watchdog pet written as a register access, `^=` on `PINx`, a
-  `gpio_t*` passed by value, an interface field that is not first in its struct. Where a solution
+  `gpio_t` passed by value, an interface field that is not first in its struct. Where a solution
   flags one of these, a candidate who walks into it loses those marks and no others.
 * **The discussion parts are not decoration.** "State why" is where the course's actual content is,
   and a paper marked only on whether the code would compile would pass a candidate who has understood
