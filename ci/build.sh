@@ -12,8 +12,9 @@ ROOT_DIR="$(dirname "${BASH_SOURCE[0]}")/.."
 # Navigate to the root directory.
 cd "$ROOT_DIR"
 
-# Build each project directory containing a Makefile.
-for dir in $(find . -mindepth 2 -name Makefile -exec dirname {} \; | sort); do
+# Build each project directory under lectures/ containing a Makefile. The book has a Makefile of
+# its own, in book/, and needs LuaLaTeX rather than the AVR toolchain: see book/README.md.
+for dir in $(find ./lectures -name Makefile -exec dirname {} \; | sort); do
     echo "==> $dir"
     make -C "$dir"
 done
