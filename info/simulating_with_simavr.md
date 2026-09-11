@@ -5,7 +5,10 @@ using [simavr](https://github.com/buserror/simavr), a cycle-accurate AVR simulat
 
 Everything described here has been verified against the demos in `lectures/`: the LED toggles, the
 button interrupt fires, the debounce timer works, UART output appears, EEPROM survives a restart,
-and starving the watchdog resets the MCU exactly as it would on silicon.
+and starving the watchdog resets the MCU. Two things behave differently from the board, and both
+are explained where they come up: the simulated button is wired the other way round (see
+[Gotchas](#gotchas)), and the watchdog's reboot loop runs faster (see
+[Watching the Watchdog Bite](#watching-the-watchdog-bite)).
 
 > **This is a fallback, not a replacement.** Simulation gets you unblocked, but it will not teach
 > you what a floating input, a missing pull-up, or a badly seated jumper wire feels like. Get a
@@ -310,7 +313,8 @@ int main(int argc, char** argv)
     }
     if (NULL == firmware)
     {
-        fprintf(stderr, "usage: %s [--led B1] [--button B5] [--eeprom f] <firmware.elf>\n", argv[0]);
+        fprintf(stderr, "usage: %s [--led B1] [--button B5] [--eeprom f] <firmware.elf>\n",
+                argv[0]);
         return 1;
     }
 
@@ -479,7 +483,16 @@ LED1 disabled!LED1 disabled!LED1 disabled!LED1 disabled!LED1 disabled!...
 
 That is `setup()`'s state report running again on every boot: the starved watchdog is resetting the
 MCU over and over. Restore the `watchdog_reset()` call, rebuild, and you get exactly one report and
-then silence. Measured over six seconds on this demo: **11 reports starved, 1 report when pet.**
+then silence.
+
+The reports run together because each one is cut off before its line ending, and that is a
+simulator quirk worth knowing about. Measured in simulated time, the first report comes at boot and
+the first reset 1024 ms later, as on the board; after that, the MCU resets every **16 ms**. A
+watchdog reset leaves the watchdog running at its shortest timeout (L08 Appendix A.3), and
+`watchdog_init()` changes that to 1024 ms first thing in `setup()`. The chip applies the change;
+simavr 1.6 only picks up a new timeout when the watchdog is switched on, not when it is changed
+while running. So every boot runs at 16 ms, which is just long enough to print `LED1 disabled!`
+but not its `\r\n`. On the board, the loop repeats every 1024 ms or so.
 
 Commenting out `watchdog_init()` as well is a useful third data point, and gives 1 report again: the
 reboot loop really is the watchdog firing, not the demo restarting for some other reason.
@@ -493,12 +506,14 @@ EEPROM, so you only see it flicker if `eeprom.bin` holds the "on" state from a p
 ---
 
 ## Gotchas
-**A short button press does nothing.** This one is real firmware behaviour, not a simulator
-artifact, and it is worth understanding. The button is wired with a pull-up, so the pin reads *high*
-when released. The pin change ISR checks `gpio_read(&btn1)` and only toggles the LED when the pin is
-high — that is, on **release**. But the press edge also disables pin change interrupts for 300 ms of
-debounce. So if you release the button inside that 300 ms window, the release edge is never seen and
-nothing happens. The harness holds the button for 500 ms for exactly this reason.
+**A short button press does nothing.** This one comes from the simulated button, and it is worth
+understanding. simavr's button part pulls the pin *low* while pressed and lets it go *high* when
+released, the opposite of the course's circuit, where an external pull-down holds the pin low until
+the button connects it to 5 V. The pin change ISR checks `gpio_read(&btn1)` and only toggles the LED
+when the pin is high: on the board that is the press, but in the simulator it is the **release**.
+And the press edge also disables pin change interrupts for 300 ms of debounce. So if you release the
+button inside that 300 ms window, the release edge is never seen and nothing happens. The harness
+holds the button for 500 ms for exactly this reason.
 
 **Mashing Enter looks like a hang, but isn't.** Press quickly and you will see `[BTN] press` lines
 with no `[LED]` change, as though the simulator has wedged. Two things compound. The 300 ms debounce
@@ -521,7 +536,7 @@ simavr can't report symbolic addresses.
 ## Limits
 The harness above covers digital I/O, interrupts, timers, UART, EEPROM and the watchdog — which is
 everything the committed demos need. It does not cover:
-* **ADC input** (L05's potentiometer). simavr simulates the ADC, but feeding it a value requires
+* **ADC input** (L04's potentiometer). simavr simulates the ADC, but feeding it a value requires
   raising the ADC IRQ from the harness. Adding that is a good exercise if you need it.
 * **Timing realism.** Nothing here tells you whether your code is fast enough.
 * **Anything physical.** Contact bounce, brown-outs, noise, and wiring mistakes are precisely the
