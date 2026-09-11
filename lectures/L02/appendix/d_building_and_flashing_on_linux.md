@@ -103,7 +103,7 @@ a toy example.
 WSL2 doesn't share Windows' USB devices by default. `usbipd-win` bridges the two; this is a
 one-time install, then a per-session attach.
 
-**On Windows** (PowerShell, once): install the bridge and confirm winusb driver support:
+**On Windows** (PowerShell, once): install the bridge:
 
 ```
 winget install usbipd
@@ -175,7 +175,7 @@ Ties D.4 and D.7 together to replace the manual commands:
 * Run `make` to compile the code.
 * Run `make flash` to flash the firmware.
 
-Adjust `PORT` for your setup: 
+Adjust `PORT` for your setup:
 
 ```makefile
 MCU   := atmega328p

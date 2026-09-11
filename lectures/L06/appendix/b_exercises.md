@@ -35,7 +35,7 @@ runs.
 `RXEN0`/`RXC0` pattern: enable the receiver in `serial_init()`, then add a `serial_read()` to `serial.h`/`serial.c` that blocks until a byte arrives.
 
 Use it in `main()` so that receiving `'t'` over serial toggles LED1 the same way pressing the
-button already does, reporting the new state the same way `ISR(PCINT0_vect)` already does.
+button already does, reporting the new state the same way `main()` already reports a button press.
 
 ---
 

@@ -20,7 +20,7 @@ C_FLAGS := -Wall -Wextra -Werror -Iinclude -std=c11
 SRC_FILES := main.c \
              source/driver/eeprom.c \
              source/driver/serial.c \
-			 source/driver/watchdog.c \
+             source/driver/watchdog.c \
 
 # Build the firmware image by default.
 all: main.hex

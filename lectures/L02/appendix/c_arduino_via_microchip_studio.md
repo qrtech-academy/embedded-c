@@ -13,7 +13,7 @@ that does exactly that.
 ## C.2 Wire the circuit
 Same layout as [Appendix A](./a_registers_and_io.md)'s first example: LED anode on D9 (through a
 220 Ω-470 Ω resistor to ground, 330 Ω is a good middle value), button on D13 (one leg to 5 V, the
-other to ground through a 10 kΩ resistor, with D13 tapped in series on that leg).
+other to ground through a 10 kΩ resistor, with D13 connected between the button and the resistor).
 
 ![](./images/01_breadboard_wiring.png)
 
@@ -40,7 +40,7 @@ void setup()
     // Configure LED1 as output.
     pinMode(LED1, OUTPUT);
 
-    // Configure BTN1 as input with its pull-up enabled.
+    // Configure BTN1 as input (the external 10 kOhm resistor pulls it down).
     pinMode(BTN1, INPUT);
 }
 
@@ -73,7 +73,7 @@ Upload".
 ---
 
 ## C.4 Install the board package, select the board and port
-Install the AVR board package if it isn't already: `Tools → Board → Board Manager`, then click
+Install the AVR board package if it isn't already: `Tools → Board → Boards Manager`, then click
 Install on "Arduino AVR Boards by Arduino" (skip this if it's already installed, as in the
 screenshot below).
 
@@ -97,7 +97,7 @@ Click Upload in the top-left corner.
 ![](./images/08_upload_button.png)
 
 In the Output window (the black pane), scroll up to the line reading "Compilation complete." and
-copy the file path on the line beneath it; it should look something like:
+copy the `avrdude` command on the line beneath it; it should look something like:
 
 ```
 "C:\Users\eripih2001\AppData\Local\Arduino15\packages\arduino\tools\avrdude\6.3.0-arduino17/bin/avrdude"
@@ -215,9 +215,10 @@ Then build it: `Build → Build Solution`.
 
 ![](./images/18_mainc_build_menu.png)
 
-The screenshots for this walkthrough were taken against an earlier draft of `main.c` with plain
-(non-`static`) functions and no Doxygen comments; the *code shown above* is what you should
-actually type in; the IDE mechanics (menus, dialogs, build steps) are otherwise identical.
+The screenshots for this walkthrough were taken against earlier drafts of the program: of the
+Arduino sketch in C.3-C.5, with other pin numbers, and of `main.c`, with plain (non-`static`)
+functions and no Doxygen comments. The *code shown in the text* is what you should actually type
+in; the IDE mechanics (menus, dialogs, build steps) are otherwise identical.
 
 ---
 
@@ -240,7 +241,7 @@ then click **OK**.
 
 ![](./images/22_external_tools_arduino_com4.png)
 
-Go back into `Tools` and select the profile you just created (e.g. `Arduino - COM4`).
+Go back into `Tools` and select the tool you just created (e.g. `Arduino - COM4`).
 
 ![](./images/23_tools_menu_arduino_com4_selected.png)
 
@@ -270,8 +271,8 @@ write fails instead, with something like:
 avrdude.exe: ser_open(): can't open device "\\.\COM4": Det går inte att hitta filen.
 ```
 
-check that the board is connected, then check the Arduino IDE for its current COM port; if it's
-changed, see below.
+(the last part is Swedish Windows for "The system cannot find the file specified"), check that the
+board is connected, then check the Arduino IDE for its current COM port; if it's changed, see below.
 
 ### If the COM port changes
 Reconnecting the board sometimes assigns a different COM port, which surfaces as the same
@@ -283,7 +284,7 @@ the same Command, and an Arguments value with `PCOM4` swapped for the new port (
 
 ![](./images/26_external_tools_arduino_com3.png)
 
-Then select the new profile from `Tools` and run it the same way as before.
+Then select the new tool from `Tools` and run it the same way as before.
 
 ![](./images/27_tools_menu_arduino_com3_selected.png)
 

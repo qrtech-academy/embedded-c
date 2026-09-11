@@ -24,7 +24,7 @@
 /** Pin offset for I/O port D. */
 #define PIN_OFFSET_D 0U
 
-/** Number of avilable ports. */
+/** Number of available ports. */
 #define PORT_COUNT 3U
 
 /** Port offset for I/O port B. */
@@ -168,10 +168,10 @@ gpio_t* gpio_new(const uint8_t pin, const gpio_mode_t mode, gpio_callback_t cb)
     // Check the pin, return NULL if reserved or invalid.
     if (!is_pin_free(pin)) { return NULL; }
 
-    // Check GPIO mode, return a nullptr if invalid.
+    // Check GPIO mode, return NULL if invalid.
     if (!is_mode_valid(mode)) { return NULL; }
 
-    // Allocate memory for a new GPIO, return a nullptr on failure.
+    // Allocate memory for a new GPIO, return NULL on failure.
     gpio_t* self = (gpio_t*)(malloc(sizeof(gpio_t)));
     if (NULL == self) { return NULL; }
 
@@ -210,7 +210,7 @@ void gpio_del(gpio_t** self)
 // -----------------------------------------------------------------------------
 void gpio_write(gpio_t* self, const bool state)
 {
-    // Terminate the function is the GPIO is invalid.
+    // Terminate the function if the GPIO is invalid.
     if (NULL == self) { return; }
 
     // Check data mode, terminate the function if not configured as output.
@@ -231,20 +231,21 @@ bool gpio_read(const gpio_t* self)
 // -----------------------------------------------------------------------------
 void gpio_toggle(gpio_t* self)
 {
-    // Terminate the function is the GPIO is invalid.
+    // Terminate the function if the GPIO is invalid.
     if (NULL == self) { return; }
 
     // Check data mode, terminate the function if not configured as output.
     if (!READ(*self->ddrx, self->pin)) { return; }
 
-    // Toggle the output by setting the pin in PINx (the hardware will toggle the output).
-    SET(*self->pinx, self->pin);
+    // Toggle the output by writing a 1 to its bit in PINx (the hardware toggles PORTx). A plain
+    // write, not SET(): a read-modify-write of PINx would toggle every pin that reads high.
+    *self->pinx = (1U << self->pin);
 }
 
 // -----------------------------------------------------------------------------
 void gpio_enable_pci(gpio_t* self)
 {
-    // Terminate the function is the GPIO is invalid.
+    // Terminate the function if the GPIO is invalid.
     if (NULL == self) { return; }
 
     // Enable interrupts on the associated I/O-port.
@@ -260,7 +261,7 @@ void gpio_enable_pci(gpio_t* self)
 // -----------------------------------------------------------------------------
 void gpio_disable_pci(gpio_t* self, bool disable_port)
 {
-    // Terminate the function is the GPIO is invalid.
+    // Terminate the function if the GPIO is invalid.
     if (NULL == self) { return; }
 
     // Disable interrupts on the pin.
@@ -284,14 +285,20 @@ bool gpio_handle_event(gpio_t* self)
     // Check event flag, invoke callback if an event has occurred.
     if (gpio_event_occurred(self))
     {
-        // Invoke callback if an event has occurred, mark as handled and clear the event flag.
+        // Clear the event flag, then invoke the callback and mark the event as handled. Clearing
+        // first means an event that arrives while the callback runs is flagged again, not lost.
         if (NULL != self->cb)
         {
+            // Clear the flag with interrupts disabled, since an ISR flagging another port between
+            // the read and the write of this read-modify-write would otherwise be lost.
+            cli();
+            CLEAR(event_flags, self->pcicrx);
+            sei();
+
             self->cb();
             handled = true;
-            CLEAR(event_flags, self->pcicrx);
         }
-    };
+    }
     // Return true if the event was handled, false otherwise.
     return handled;
 }

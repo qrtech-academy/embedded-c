@@ -8,6 +8,8 @@
 #include <avr/interrupt.h>
 #include <avr/io.h>
 
+#include "driver/eeprom.h"
+
 #define EEPROM_ADDR_MAX 1023U // Highest address in EEPROM.
 
 // -----------------------------------------------------------------------------
@@ -40,6 +42,9 @@ static bool eeprom_read_byte(const uint16_t addr, uint8_t* byte)
     // Return false if the address is invalid or if byte is NULL.
     if (!addr_valid(addr) || (NULL == byte)) { return false; }
 
+    // Wait for any previous write to finish.
+    while (EECR & (1U << EEPE)) {}
+
     // Set the address to read from.
     EEAR = addr;
 
@@ -58,7 +63,7 @@ int16_t eeprom_write(const uint8_t* buf, const uint16_t buflen, const uint16_t a
     if ((NULL == buf) || (0U == buflen) || !addr_valid(addr)) { return -1; }
     uint16_t i = 0U;
 
-    // Transmit each byte one by one.
+    // Write each byte one by one.
     for (; i < buflen; ++i)
     {
         // Terminate operation on write failure (indicates out of range).

@@ -6,7 +6,7 @@
 takes a pointer to a `temp_reading` (named `self`, per the convention in [Appendix A,
 A.3](./a_c_fundamentals.md#a3-structs-enums-and-typedefs)) plus an ADC value, and stores it along
 with the voltage and temperature derived from it (you don't need the real TMP36 formula yet; a
-placeholder conversion is fine, you'll derive the real one in a later project).
+placeholder conversion is fine, the real one comes with L06's temperature capstone).
 
 **2.** Turn `struct temp_reading` into a `typedef`, `temp_reading_t`, following the `_t` convention
 from Appendix A, A.3.
@@ -16,7 +16,7 @@ from Appendix A, A.3.
 message for each state, then remove one `case` and see whether your compiler warns about the
 missing case (try building with `-Wswitch` if it doesn't by default). **Stretch:** write a function
 `state_next()` that returns the next state, wrapping from `STATE_ON` back to `STATE_OFF`; the core
-of the state machine you'll build in a later project.
+of the state machine you'll build in L03's last exercise.
 
 ---
 
@@ -55,7 +55,7 @@ caller's pointer.
 following the pattern in [Appendix A,
 A.11](./a_c_fundamentals.md#a11-dynamic-memory-allocation-mallocreallocfree). Make sure it behaves
 correctly when resizing down to zero elements. This is the shape you'd reach for to keep a rolling
-history of the last few readings, like the averaging window in the temperature project.
+history of the last few readings, like the five-reading average in L06's temperature capstone.
 
 **Tip:** compile with `-fsanitize=address` (GCC/Clang) while testing exercises 8-9; it catches
 use-after-free and leaks immediately, which are easy to introduce by hand here.

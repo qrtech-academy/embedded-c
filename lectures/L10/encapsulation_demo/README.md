@@ -94,7 +94,7 @@ The example demonstrates:
   * Configures the button pin as an input.
   * Registers a callback for the button GPIO.
   * Enables the button's pin-change interrupt.
-  * Enables global interrupts after initialization is complete.
+  * Enables global interrupts through `gpio_enable_pci()`, once both GPIOs are initialized.
   * Polls for pending GPIO events in the main loop.
   * Calls `gpio_handle_event()` from normal program context.
   * Toggles the LED from the registered callback when the button event is handled.

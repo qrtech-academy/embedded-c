@@ -37,7 +37,7 @@ while (EECR & (1U << EEPE)) {} // Wait for any earlier write to finish.
 EEAR = addr; // Set destination address (0-1023).
 EEDR = byte; // Set data to write (one byte).
 
-cli();                 // Disable interrupts during the write sequence.              
+cli();                 // Disable interrupts during the write sequence.
 EECR |= (1U << EEMPE); // EEMPE must be followed by EEPE within 4 cycles.
 EECR |= (1U << EEPE);
 sei();                 // Re-enable interrupts once the write sequence is complete.
@@ -59,9 +59,10 @@ return EEDR;                   // Return the byte at the specified address.
 ## A.3 `eeprom_write_byte()` / `eeprom_read_byte()`
 
 ```c
-#include <avr/io.h>
-#include <avr/interrupt.h>
 #include <stdint.h>
+
+#include <avr/interrupt.h>
+#include <avr/io.h>
 
 /**
  * @brief Write a byte to EEPROM at the given address.
@@ -95,7 +96,7 @@ static void eeprom_write_byte(const uint16_t addr, const uint8_t byte)
 static uint8_t eeprom_read_byte(const uint16_t addr)
 {
     // Wait for any earlier write to finish.
-    while (EECR & (1U << EEPE)) ;
+    while (EECR & (1U << EEPE)) {}
 
     // Set address to read from.
     EEAR = addr;
@@ -181,8 +182,8 @@ The driver files ([driver/eeprom.h](../eeprom_driver_demo/include/driver/eeprom.
 #define EEPROM_LED1_ON 1U      // Stored value indicating that LED1 is on.
 #define EEPROM_LED1_OFF 0U     // Stored value indicating that LED1 is off.
 
-/** True when a LED1 event occurs. */
-static bool led1_event = false;
+/** Flags that a LED1 event has occurred. */
+static volatile bool led1_event = false;
 
 /**
  * @brief Print the LED1 state over UART.
@@ -227,9 +228,9 @@ static void setup(void)
 }
 
 /**
- * @brief Toggle LED1 and transmit a message over UART on button press.
+ * @brief Toggle LED1 on button press, and flag the event for main() to report.
  *
- *        Disable button interrupts for 300 ms to prevent debounce.
+ *        Disable button interrupts for 300 ms to suppress contact bounce.
  */
 ISR(PCINT0_vect)
 {
@@ -237,7 +238,7 @@ ISR(PCINT0_vect)
     BTN1_INT_DISABLE;
     TIMER0_ENABLE;
 
-    // Toggle LED1 and save its new state if BTN1 is pressed.
+    // Toggle LED1 and flag the event if BTN1 is pressed.
     if (BTN1_PRESSED)
     {
         LED1_TOGGLE;

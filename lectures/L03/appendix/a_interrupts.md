@@ -54,7 +54,7 @@ call site; the vector is how the linker wires it up.
 ```c
 ISR(INT0_vect)
 {
-    // Runs on the configured edge, then execution resumes exactly where the main program 
+    // Runs on the configured edge, then execution resumes exactly where the main program
     // was interrupted.
 }
 ```
@@ -136,7 +136,6 @@ between the LED blinking every 100 ms and staying off.
 ![](./images/circuit_int1_blink.png)
 
 ```c
-
 #define F_CPU 16000000UL // CPU frequency in Hz.
 
 #include <stdbool.h>
@@ -183,7 +182,7 @@ static void setup(void)
 /**
  * @brief Generate delay.
  *
- * @param[in] ms Duration in ms.
+ * @param[in] ms Pointer to the duration in ms.
  *
  * @note A pointer is used so that the duration can be set to 0 on blink state change.
  */
@@ -261,7 +260,7 @@ re-reads whatever `blink_speed_ms` currently holds, not a value frozen at the mo
 was called.
 
 That distinction matters here specifically because `blink_speed_ms` can change out from under
-`delay_ms()` mid-delay, the ISR overwrites it the instant a press or release happens. Had
+`delay_ms()` mid-delay, the ISR overwrites it the instant the button is released. Had
 `delay_ms()` taken `const uint16_t ms` by value instead, it would have received a private copy at
 call time and stayed blind to the ISR's update for the rest of the delay. With a pointer, the very
 next `i < *ms` check after the ISR runs sees the new value, so a press/release is noticed within
@@ -312,7 +311,7 @@ Example: button on D13 (PORTB5) → `PCINT5`.
 
 /** GPIO operations. */
 #define LED1_TOGGLE PINB = (1U << LED1)    // Toggle LED1.
-#define BTN1_PRESSED (PINB & (1U << BTN1)) // High if BTN1 is pressed, false otherwise.
+#define BTN1_PRESSED (PINB & (1U << BTN1)) // High if BTN1 is pressed, low otherwise.
 
 /**
  * @brief Set up system.
@@ -322,7 +321,7 @@ static void setup(void)
     // Configure LED1 as output.
     DDRB = (1U << LED1);
 
-    // Configure BT1N as input with its internal pull-up enabled.
+    // Configure BTN1 as input with its internal pull-up enabled.
     PORTB = (1U << BTN1);
 
     // Enable pin change interrupt on D13 (for BTN1).
@@ -377,7 +376,7 @@ static void setup(void)
     // ...
     PCICR = (1U << PCIE2);  // Enable PCI on port D.
     PCMSK2 = (1U << BTN2);  // Specifically D2 / PORTD2.
-    sei();                  // Enable interrupt globally.
+    sei();                  // Enable interrupts globally.
 }
 
 ISR(PCINT2_vect) // Shared by every enabled PCI pin on port D.

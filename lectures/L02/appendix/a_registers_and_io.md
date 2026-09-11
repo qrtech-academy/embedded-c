@@ -92,18 +92,21 @@ PORTB &= ~(1U << LED1); // Disable LED1.
 ```
 
 The button circuit used in A.5/A.6 doesn't actually rely on this internal pull-up: it wires an
-**external pull-down** resistor instead (one leg to 5 V, a 10 kΩ resistor from that same leg to
-GND, D13 tapped in between). That means D13 reads `0` when idle and `1` when pressed, the
+**external pull-down** resistor instead (one leg of the button to 5 V, the other leg to D13 and,
+through a 10 kΩ resistor, to GND). That means D13 reads `0` when idle and `1` when pressed, the
 opposite of the internal-pull-up pattern described above. The code still enables the internal
-pull-up anyway (`PORTB = (1U << BTN1);`); that's harmless here, since the external 10 kΩ resistor
-dominates the AVR's much weaker internal one (tens of kΩ) and keeps the idle reading at `0`, but
-it isn't what makes this circuit work. It's there so you see `PORTx`'s input-mode behavior used
-directly, even on a circuit that doesn't strictly need it.
+pull-up anyway (`PORTB = (1U << BTN1);`), so you see `PORTx`'s input-mode behavior used directly,
+but it isn't what makes this circuit work. It's harmless in practice: the internal pull-up and the
+external 10 kΩ pull-down form a voltage divider, and with the internal resistor's typical value of
+around 35 kΩ the idle pin sits near 1.1 V, comfortably below the 1.5 V (0.3 × 5 V) under which a
+pin is guaranteed to read `0`. It isn't guaranteed, though: the datasheet only promises 20-50 kΩ,
+and at 20 kΩ the idle pin rises to about 1.7 V, where the reading is undefined. In a design of
+your own, don't enable a pull-up against an external pull-down.
 
 ---
 
 ## A.5 First program: LED follows a button
-A LED is connected to D9, and a button is connected to D13. The button is continuously polled:
+An LED is connected to D9, and a button is connected to D13. The button is continuously polled:
 * The LED is enabled if the button is pressed.
 * The LED is disabled if the button isn't pressed.
 
@@ -152,10 +155,11 @@ int main(void)
 }
 ```
 
-`LED1_ON`, `LED1_OFF`, and `BTN1_PRESSED` are the object-like and function-like macros covered in
+`LED1_ON`, `LED1_OFF`, and `BTN1_PRESSED` are the object-like macros covered in
 [L01 Appendix A.12](../../L01/appendix/a_c_fundamentals.md#a12-macros-define): plain text
-substitution, parenthesized throughout so each one behaves correctly no matter what surrounds it
-at the call site.
+substitution, with no parameters. `BTN1_PRESSED` is used as a value, inside a condition, so its
+whole body is parenthesized and it behaves correctly no matter what surrounds it at the call site.
+`LED1_ON` and `LED1_OFF` are complete statements, only ever used on their own, followed by a `;`.
 
 You'll see a Doxygen comment above every non-trivial function throughout this codebase, written in
 the imperative mood ("Configure...", "Compute...", not "Configures..." or "This function
@@ -169,7 +173,7 @@ LEDs on D9/D10 alternate every 200 ms while the button on D13 is held; both off 
 ![](./images/circuit_two_led_blink.png)
 
 ```c
-#define F_CPU 16000000UL // CPU frequency in HZ.
+#define F_CPU 16000000UL // CPU frequency in Hz.
 
 #include <stdint.h>
 
@@ -265,8 +269,9 @@ int main(void)
 
 A few things worth noting:
 * `F_CPU` must be `#define`d *before* including `<util/delay.h>`, since the delay functions
-  compute their loop counts from the clock frequency at compile time. The `UL` suffix avoids the
-  value being truncated as a 16-bit `int` on this target.
+  compute their loop counts from the clock frequency at compile time. `int` is only 16 bits on this
+  target, far too small for 16,000,000; the `UL` suffix makes the constant an `unsigned long`
+  explicitly, rather than leaving its type to C's rules for unsuffixed constants.
 * `<stdint.h>` is included explicitly for `uint16_t`, even though `<avr/io.h>` happens to pull it
   in already; include what you directly use rather than relying on a header's own includes, which
   can change.

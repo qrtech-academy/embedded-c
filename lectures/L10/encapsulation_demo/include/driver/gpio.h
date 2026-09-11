@@ -32,7 +32,7 @@ typedef void (*gpio_callback_t)(void);
  * @param[in] mode GPIO mode.
  * @param[in] cb Optional callback. Pass NULL if none.
  *
- * @return The initialized GPIO on success, a nullptr otherwise.
+ * @return The initialized GPIO on success, NULL otherwise.
  */
 gpio_t* gpio_new(uint8_t pin, gpio_mode_t mode, gpio_callback_t cb);
 

@@ -67,6 +67,7 @@ void gpio_write(gpio_t* self, bool state);
  * @return GPIO state (true = high, false = low).
  */
 bool gpio_read(const gpio_t* self);
+
 /**
  * @brief Toggle state of the given GPIO.
  *

@@ -7,7 +7,7 @@
   representing it.
 * The ATmega328P has a 10-bit ADC: the result is an integer between `0` and `1023` (2¹⁰ − 1),
   representing an input voltage between `0 V` and whatever reference voltage you configure
-  (default: the chip's own supply, `AVCC`, 5 V on the Uno/Nano).
+  (normally the chip's own supply, `AVCC`, 5 V on the Uno/Nano; A.2 shows how to select it).
 
 The mapping is linear:
 
@@ -18,6 +18,11 @@ result = 1023 * (V_in / V_ref)
 So `V_in = 0 V` → `0`, `V_in = V_ref` → `1023`, `V_in = V_ref / 2` → `~512`. More bits would mean
 finer resolution for the same voltage range; 10 bits is enough for most sensor work, which is why
 the chip stops there.
+
+The datasheet writes the same mapping with `1024` instead of `1023`, counting full scale as `V_ref`
+itself, so that the top code, `1023`, means one step below `V_ref`. The two formulas never differ
+by more than one step (about 5 mV at a 5 V reference); this course uses `1023` throughout, so that
+`1023` converts back to exactly `V_ref`.
 
 There's a flip side to this same problem worth previewing: this chip's outputs are just as binary
 as its inputs, a pin is either driving high or low, nothing in between. So how do you make an LED
@@ -37,11 +42,12 @@ its number into the low 4 bits of `ADMUX`.
 Three registers matter:
 
 1. **`ADMUX`** selects the input channel (bits 0–3) and the voltage reference (bits 6–7). Setting
-   `REFS0` (and leaving `REFS1` clear) selects the internal voltage `AVCC` as the reference, the
-   normal choice:
+   `REFS0` (and leaving `REFS1` clear) selects the supply voltage `AVCC` as the reference, the
+   normal choice. Leave both clear, as they are after a reset, and the reference is whatever is
+   connected to the `AREF` pin instead, which on an Uno/Nano is nothing at all:
 
     ```c
-    // Use internal voltage reference, select ADC channel (0 for A0, 1 for A1 etc.).
+    // Use AVCC as voltage reference, select ADC channel (0 for A0, 1 for A1 etc.).
     ADMUX = (1U << REFS0) | channel;
     ```
 
@@ -54,14 +60,19 @@ Three registers matter:
     ADCSRA = (1U << ADEN) | (1U << ADSC) | (1U << ADPS0) | (1U << ADPS1) | (1U << ADPS2);
     ```
 
-A conversion isn't instantaneous; poll the `ADIF` flag (or use an interrupt) until it's set, then
-clear it by writing a `1` back to it:
+   A conversion isn't instantaneous; poll the `ADIF` flag (or use an interrupt) until it's set,
+   then clear it by writing a `1` back to it:
 
     ```c
     while (0U == (ADCSRA & (1U << ADIF))) {} // Wait for the conversion.
     ADCSRA = (1U << ADIF);                   // Clear the flag for next time.
     ```
-   
+
+   That plain `=` writes every other bit of `ADCSRA` too, `ADEN` included, so it also switches the
+   ADC off until the next read turns it back on. That's harmless in A.3's `adc_read()`, which
+   rewrites the whole register at the start of every read, but it makes every conversion a first
+   conversion after enabling, 25 ADC clock cycles (200 µs at 125 kHz) instead of 13.
+
 3. **`ADC`** holds the result. In C this macro already combines the two underlying 8-bit registers
    (`ADCH`/`ADCL`) into the full 10-bit value; you don't assemble it by hand. Without it, you'd
    have to do it yourself, and the read order matters:
@@ -107,14 +118,14 @@ left by 8 without first widening it relies on C's automatic promotion to `int`.
  */
 static uint16_t adc_read(const uint8_t channel)
 {
-    // Use internal voltage reference and select ADC channel to read.
+    // Use AVCC as voltage reference and select ADC channel to read.
     ADMUX = (1U << REFS0) | channel;
 
     // Perform conversion, wait for conversion to complete.
     ADCSRA = (1U << ADEN) | (1U << ADSC) | (1U << ADPS0) | (1U << ADPS1) | (1U << ADPS2);
     while (0U == (ADCSRA & (1U << ADIF))) {}
 
-    // Restore the ADC interrupt flag for next conversion, then return the result.
+    // Clear the ADC interrupt flag for next conversion, then return the result.
     ADCSRA = (1U << ADIF);
     return ADC;
 }
@@ -123,7 +134,7 @@ static uint16_t adc_read(const uint8_t channel)
 ---
 
 ## A.4 Example: potentiometer-controlled LED brightness (software PWM)
-There's no true analog output on this chip without a dedicated PWM peripheral, but as A.1
+There's no true analog output on this chip (it has no digital-to-analog converter), but as A.1
 previewed, you can fake brightness control in software instead: flick an LED on and off fast enough
 that the eye averages it into perceived brightness, driven by duty cycle.
 
@@ -199,14 +210,14 @@ static void delay_ms(const uint16_t ms)
  */
 static uint16_t adc_read(const uint8_t channel)
 {
-    // Use internal voltage reference and select ADC channel to read.
+    // Use AVCC as voltage reference and select ADC channel to read.
     ADMUX = (1U << REFS0) | channel;
 
     // Perform conversion, wait for conversion to complete.
     ADCSRA = (1U << ADEN) | (1U << ADSC) | (1U << ADPS0) | (1U << ADPS1) | (1U << ADPS2);
     while (0U == (ADCSRA & (1U << ADIF))) {}
 
-    // Restore the ADC interrupt flag for next conversion, then return the result.
+    // Clear the ADC interrupt flag for next conversion, then return the result.
     ADCSRA = (1U << ADIF);
     return ADC;
 }
@@ -270,7 +281,8 @@ changes how bright the LED appears.
 
 Note `delay_ms()` is built on `_delay_ms()`, so it has the same blocking limitation flagged in
 Lecture 2; this software-PWM approach ties up the CPU for the whole 10 ms period. The Timers
-lecture (L05) replaces this with a non-blocking, interrupt-driven equivalent, using the same
-overflow-counting pattern taught there instead of a dedicated hardware PWM peripheral.
+lecture (L05) shows the way out: a hardware timer that raises an interrupt when a period has
+passed, so the CPU is free in between instead of spinning inside `_delay_ms()`. (The timers can
+also generate PWM entirely in hardware, which this course doesn't cover.)
 
 ---

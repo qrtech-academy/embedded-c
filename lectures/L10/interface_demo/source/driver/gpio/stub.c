@@ -31,7 +31,7 @@ static inline const gpio_stub_t* get_const_impl(const gpio_interface_t* self)
 // -----------------------------------------------------------------------------
 static void gpio_del(gpio_interface_t** self)
 {
-    // Terminate the function if self is a nullptr.
+    // Terminate the function if self is NULL.
     if (NULL == self) { return; }
 
     // Retrieve implementation details, terminate the function on failure.
@@ -94,7 +94,7 @@ static const gpio_vtable_t* gpio_vptr_get_instance(void)
 // -----------------------------------------------------------------------------
 gpio_interface_t* gpio_stub_new(void)
 {
-    // Create new GPIO instance, return nullptr on failure.
+    // Create new GPIO instance, return NULL on failure.
     gpio_stub_t* self = (gpio_stub_t*)(malloc(sizeof(gpio_stub_t)));
     if (NULL == self) { return NULL; }
 

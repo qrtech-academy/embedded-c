@@ -25,7 +25,7 @@ starting a conversion, rather than reading `ADC` immediately after setting `ADSC
 ## Program
 **5.** Extend the lecture's PWM-brightness example so that, instead of software PWM, it simply
 lights the LED solid whenever the potentiometer reading exceeds `512`, and turns it off otherwise,
-a basic light-triggered switch with no PWM. Rewrite `run_pwm_cycle()` (rename it too; it's no
+a basic threshold switch with no PWM. Rewrite `run_pwm_cycle()` (rename it too; it's no
 longer PWM).
 
 ---

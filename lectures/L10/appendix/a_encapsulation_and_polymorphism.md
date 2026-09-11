@@ -27,8 +27,8 @@
 ## A.2 Hiding functions with `static`
 * L09's `gpio_t` (Appendix A.2) stays exactly as public here: every field still visible.
 * What changes is how its behavior is reached:
-  * `gpio_write()`, `gpio_read()`, `gpio_toggle()`, and a new `gpio_enable_pci()` become
-    `static`.
+  * `gpio_write()`, `gpio_read()`, `gpio_toggle()`, and `gpio_enable_pci()` (new in L09's A.5 demo)
+    become `static`.
   * At file scope, `static` means internal linkage: invisible outside `gpio.c`, a different
     meaning than the storage-duration one it has on a local variable (see [L01 Appendix
     A.4](../../L01/appendix/a_c_fundamentals.md#a4-scope-lifetime-and-storage)).
@@ -132,7 +132,6 @@ out-of-range pin returns `false` without touching any register. `driver/gpio.c`:
 #include <stddef.h>
 #include <stdint.h>
 
-#include <avr/interrupt.h>
 #include <avr/io.h>
 
 #include "driver/gpio.h"
@@ -177,7 +176,7 @@ static void gpio_toggle(gpio_t* self)
 }
 
 // -----------------------------------------------------------------------------
-static void gpio_enable_pci(gpio_t* self, bool enable)
+static void gpio_enable_pci(gpio_t* self, const bool enable)
 {
     // Check the GPIO instance, terminate if invalid.
     if (NULL == self) { return; }
@@ -187,7 +186,6 @@ static void gpio_enable_pci(gpio_t* self, bool enable)
     {
         PCICR |= (1U << self->pcicrx);
         *self->pcmskx |= (1U << self->pin);
-        sei();
     }
     else { *self->pcmskx &= ~(1U << self->pin); }
 }
@@ -295,7 +293,7 @@ loop iteration:
 
 ```c
 /**
- * @file GPIO driver demo iwth function pointers.
+ * @file GPIO driver demo.
  */
 #include <stdbool.h>
 #include <stdint.h>
@@ -331,7 +329,7 @@ loop iteration:
 #define EEPROM_LED1_OFF 0U     // Stored value indicating that LED1 is off.
 
 /** Flags that a LED1 event has occurred. */
-static bool led1_event = false;
+static volatile bool led1_event = false;
 
 /** GPIO instances. */
 static gpio_t led1, btn1;
@@ -350,6 +348,10 @@ static void print_led1_state(void)
  */
 static void setup(void)
 {
+    // Initialize the watchdog first: after a watchdog reset it is still running, with a 16 ms
+    // timeout, and the rest of setup() takes longer than that.
+    watchdog_init(WATCHDOG_TIMEOUT_1024MS);
+
     // Initialize GPIOs.
     gpio_init(&led1, LED1_PIN, GPIO_MODE_OUTPUT);
     gpio_init(&btn1, BTN1_PIN, GPIO_MODE_INPUT_PULLUP);
@@ -369,17 +371,14 @@ static void setup(void)
     }
     print_led1_state();
 
-    // Initialize watchdog with a 1024 timeout.
-    watchdog_init(WATCHDOG_TIMEOUT_1024MS);
-
     // Enable interrupts globally.
     sei();
 }
 
 /**
- * @brief Toggle LED1 and transmit a message over UART on button press.
+ * @brief Toggle LED1 on button press, and flag the event for main() to report.
  *
- *        Disable button interrupts for 300 ms to prevent debounce.
+ *        Disable button interrupts for 300 ms to suppress contact bounce.
  */
 ISR(PCINT0_vect)
 {
@@ -387,7 +386,7 @@ ISR(PCINT0_vect)
     btn1.enable_pci(&btn1, false);
     TIMER0_ENABLE;
 
-    // Toggle LED1 and save its new state if BTN1 is pressed.
+    // Toggle LED1 and flag the event if BTN1 is pressed.
     if (btn1.read(&btn1))
     {
         led1.toggle(&led1);
@@ -548,9 +547,10 @@ void gpio_toggle(gpio_t* self);
 `gpio.c`, the only file that ever sees `gpio_t`'s actual fields:
 
 ```c
-#include "driver/gpio.h"
 #include <stddef.h>
 #include <stdlib.h>
+
+#include "driver/gpio.h"
 
 struct gpio
 {
@@ -564,7 +564,7 @@ gpio_t* gpio_create(volatile uint8_t* ddrx, volatile uint8_t* portx, volatile ui
                      const uint8_t pin, const gpio_mode_t mode)
 {
     gpio_t* self = (gpio_t*)(malloc(sizeof(gpio_t)));
-    if (NULL == self) return NULL;   // allocation failed
+    if (NULL == self) { return NULL; } // Allocation failed.
 
     self->ddrx = ddrx;
     self->portx = portx;
@@ -591,9 +591,9 @@ gpio_t* gpio_create(volatile uint8_t* ddrx, volatile uint8_t* portx, volatile ui
 
 void gpio_write(gpio_t* self, const bool state)
 {
-    if (NULL == self) return;
+    if (NULL == self) { return; }
     const bool output = (*self->ddrx & (1U << self->pin));
-    if (!output) return;
+    if (!output) { return; }
 
     if (state) { *self->portx |= (1U << self->pin); }
     else { *self->portx &= ~(1U << self->pin); }
@@ -606,9 +606,9 @@ bool gpio_read(const gpio_t* self)
 
 void gpio_toggle(gpio_t* self)
 {
-    if (NULL == self) return;
+    if (NULL == self) { return; }
     const bool output = (*self->ddrx & (1U << self->pin));
-    if (!output) return;
+    if (!output) { return; }
     *self->pinx = (1U << self->pin);
 }
 ```
@@ -726,14 +726,25 @@ bool gpio_handle_event(gpio_t* self)
     {
         if (NULL != self->cb)
         {
+            cli();
+            CLEAR(event_flags, self->pcicrx);
+            sei();
+
             self->cb();
             handled = true;
-            CLEAR(event_flags, self->pcicrx);
         }
     }
     return handled;
 }
 ```
+
+`CLEAR()` is a read-modify-write of `event_flags`, the same shape as the `PORTB ^=` toggle
+[L03 Appendix A.3](../../L03/appendix/a_interrupts.md#a3-example-toggle-an-led-via-int0) warned
+about: read the byte, clear one bit, write the byte back. An ISR that flags another port between
+that read and that write would have its flag silently overwritten, so `gpio_handle_event()`
+clears the flag with interrupts disabled. And it clears it *before* calling the callback, not after:
+an edge that arrives while the callback runs then sets the flag again and is handled on the next
+pass, instead of being wiped out along with the one just handled.
 
 `gpio_event_occurred()` reads `event_flags` by `pcicrx` (`PCIE0`/`PCIE1`/`PCIE2`), while the ISRs
 above flag it by `PORT_OFFSET_B`/`_C`/`_D` (`0`/`1`/`2`); these only line up because the ATmega328p
@@ -794,7 +805,8 @@ static void button_event(void)
 /**
  * @brief Application entry point.
  *
- * @return 0 on termination of the program (should never occur), or -1 on failure.
+ * @return 0 on termination of the program (should never occur), or -1 on
+ * failure.
  */
 int main(void)
 {
@@ -901,7 +913,7 @@ static void gpio_toggle(gpio_interface_t* self)
 {
     gpio_impl_t* impl = get_impl(self);
     if ((NULL == impl) || !gpio_impl_is_output(impl)) { return; }
-    *(impl->pinx) |= (1U << impl->pin);
+    *(impl->pinx) = (1U << impl->pin); // Writing a 1 to PINx toggles PORTx.
 }
 
 static const gpio_vtable_t* gpio_vptr_get_instance(void)
@@ -916,7 +928,7 @@ gpio_interface_t* gpio_atmega328p_new(const uint8_t pin, const gpio_mode_t mode)
 {
     gpio_impl_t* impl = (gpio_impl_t*)(malloc(sizeof(gpio_impl_t)));
     if (NULL == impl) { return NULL; }
-    // ... configure impl->ddrx/portx/pinx/pin from pin, same mapping A.3's gpio_create() did ...
+    // ... configure impl->ddrx/portx/pinx/pin from pin, same mapping A.2's gpio_init() did ...
     impl->itf.vptr = gpio_vptr_get_instance();
     return (gpio_interface_t*)(impl);
 }
@@ -991,72 +1003,78 @@ interface_demo/
 
 `main.c` toggles a real LED on D8 whenever a *simulated* button, a `gpio_stub_t` whose state
 flips every 60,000 main-loop iterations instead of being wired to real hardware, reports a
-rising edge:
+rising edge. Both constructors can fail, the ATmega328P one also when its pin is already taken, so
+`main()` checks each result before using it:
 
 ```c
 /**
  * @brief GPIO driver example with interfaces in C.
  */
+#include <stddef.h>
+
 #include "driver/gpio/atmega328p.h"
 #include "driver/gpio/stub.h"
 
-/** LED pin. */
-#define LED_PIN 8U
+#define LED1_PIN 8U // D8.
 
 /** Max value of the loop counter used to simulate button events. */
-#define LOOP_COUNTER_MAX 60000UL
+#define LOOP_CNT_MAX 60000UL
 
 /**
  * @brief Simulate button events.
  *
- * @param[out] button Pointer to the simulated button.
+ * @param[out] btn Pointer to the simulated button.
  */
-void simulate_button_event(gpio_interface_t* button)
+void simulate_btn_event(gpio_interface_t* btn)
 {
-    static uint16_t loop_counter = 0U;
+    static uint16_t loop_cnt = 0U;
 
-    // Simulate a button toggle every LOOP_COUNTER_MAX calls.
-    if (LOOP_COUNTER_MAX <= ++loop_counter)
+    // Simulate a button toggle every LOOP_CNT_MAX calls.
+    if (LOOP_CNT_MAX <= ++loop_cnt)
     {
-        button->vptr->toggle(button);
-        loop_counter = 0U;
+        btn->vptr->toggle(btn);
+        loop_cnt = 0U;
     }
 }
 
 /**
- * @brief Toggle an LED connected to ATmega328p at pressdown (rising edge) of a simulated button.
+ * @brief Application entry point.
  *
- * @return Unused (this example never returns).
+ * @return 0 on termination of the program (should never occur), or -1 on
+ * failure.
  */
 int main(void)
 {
-    // Create and initialize GPIO instances.
-    gpio_interface_t* led    = gpio_atmega328p_new(LED_PIN, GPIO_MODE_OUTPUT);
-    gpio_interface_t* button = gpio_stub_new();
-    bool button_prev         = false;
+    // Create and initialize GPIO instances, return -1 on failure.
+    gpio_interface_t* led1 = gpio_atmega328p_new(LED1_PIN, GPIO_MODE_OUTPUT);
+    if (NULL == led1) { return -1; }
+
+    gpio_interface_t* btn1 = gpio_stub_new();
+    if (NULL == btn1) { return -1; }
+    bool btn1_prev = false;
 
     while (1)
     {
-        // Simulate button events every LOOP_COUNTER_MAX main-loop iterations.
-        simulate_button_event(button);
+        // Simulate button events every LOOP_CNT_MAX main-loop iterations.
+        simulate_btn_event(btn1);
 
         // Detect pressdown (rising edge).
-        const bool button_current = button->vptr->read(button);
-        const bool button_pressed = button_current && !button_prev;
+        const bool btn1_current = btn1->vptr->read(btn1);
+        const bool btn1_pressed = btn1_current && !btn1_prev;
 
         // Toggle the LED on button pressdown (rising edge).
-        if (button_pressed) { led->vptr->toggle(led); }
-        button_prev = button_current;
+        if (btn1_pressed) { led1->vptr->toggle(led1); }
+        btn1_prev = btn1_current;
     }
     // Unreachable in this example (infinite loop). Shown for completeness.
-    led->vptr->del(&led);
-    button->vptr->del(&button);
+    led1->vptr->del(&led1);
+    btn1->vptr->del(&btn1);
     return 0;
 }
 ```
 
-Neither `simulate_button_event()` nor `main()`'s edge-detection logic cares that `led` is real
-hardware and `button` isn't: both are just `gpio_interface_t*`. Swap `gpio_stub_new()` for a
+Neither `simulate_btn_event()` nor `main()`'s edge-detection logic cares that `led1` is real
+hardware and `btn1` isn't: both are just `gpio_interface_t*`. Swap `gpio_stub_new()` for a
 second `gpio_atmega328p_new()` call and a real button, and nothing else in this file changes.
 
 Build and flash the same way as [L09 Appendix

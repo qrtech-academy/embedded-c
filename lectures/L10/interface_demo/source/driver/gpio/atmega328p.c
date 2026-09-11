@@ -60,21 +60,21 @@ static inline const gpio_impl_t* get_const_impl(const gpio_interface_t* self)
 static bool is_pin_free(const uint8_t id)
 {
     // Return true if the corresponding bit in the pin registry is 0, false otherwise.
-    return PIN_COUNT > id ? (0U == (pin_registry & (1U << id))) : false;
+    return PIN_COUNT > id ? (0U == (pin_registry & (1UL << id))) : false;
 }
 
 // -----------------------------------------------------------------------------
 static void reserve_pin(const uint8_t id)
 {
     // Set the corresponding bit in the pin registry.
-    pin_registry |= (1U << id);
+    pin_registry |= (1UL << id);
 }
 
 // -----------------------------------------------------------------------------
 static void release_pin(const uint8_t id)
 {
     // Clear the corresponding bit in the pin registry.
-    pin_registry &= ~(1U << id);
+    pin_registry &= ~(1UL << id);
 }
 
 // -----------------------------------------------------------------------------
@@ -161,7 +161,7 @@ static void gpio_impl_cleanup(gpio_impl_t* impl)
 // -----------------------------------------------------------------------------
 static void gpio_del(gpio_interface_t** self)
 {
-    // Terminate the function if self is a nullptr.
+    // Terminate the function if self is NULL.
     if (NULL == self) { return; }
 
     // Retrieve implementation details, terminate the function on failure.
@@ -209,9 +209,9 @@ static void gpio_toggle(gpio_interface_t* self)
     gpio_impl_t* impl = get_impl(self);
     if ((NULL == impl) || !gpio_impl_is_output(impl)) { return; }
 
-    // Toggle the output by writing to PINx (the hardware will toggle the output
-    // of PORTx if the pin is configured as output).
-    *(impl->pinx) |= (1U << impl->pin);
+    // Toggle the output by writing a 1 to its bit in PINx (the hardware toggles PORTx). A plain
+    // write, not |=: a read-modify-write of PINx would toggle every pin that reads high.
+    *(impl->pinx) = (1U << impl->pin);
 }
 
 // -----------------------------------------------------------------------------
@@ -231,10 +231,10 @@ static const gpio_vtable_t* gpio_vptr_get_instance(void)
 // -----------------------------------------------------------------------------
 gpio_interface_t* gpio_atmega328p_new(const uint8_t pin, const gpio_mode_t mode)
 {
-    // Return a nullptr if the pin is reserved.
+    // Return NULL if the pin is reserved.
     if (!is_pin_free(pin)) { return NULL; }
 
-    // Create new GPIO instance, return nullptr on failure.
+    // Create new GPIO instance, return NULL on failure.
     gpio_impl_t* impl = (gpio_impl_t*)(malloc(sizeof(gpio_impl_t)));
     if (NULL == impl) { return NULL; }
 

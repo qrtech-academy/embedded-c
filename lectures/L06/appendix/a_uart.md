@@ -2,7 +2,7 @@
 
 ## A.1 Why serial
 * Every debugging technique so far has been "blink an LED and infer what happened." UART (Universal
-  Synchronous/Asynchronous Receiver/ Transmitter) gives you a real communication channel to a PC,
+  Asynchronous Receiver/Transmitter) gives you a real communication channel to a PC,
   `printf()`-style debugging, logging sensor data, or eventually two-way communication with a host
   application.
 * It's called *serial* because it sends one bit at a time over a single wire, framed by a start bit
@@ -65,24 +65,24 @@ static void serial_init(void)
 
 ## A.3 Sending data
 Transmission happens one byte at a time through the `UDR0` data register. Before writing a new
-byte, wait for the previous one to finish sending; signalled by the `UDRE0` (Data Register Empty)
-flag in `UCSR0A`:
+byte, wait for the previous one to move out of `UDR0` (into the transmit shift register, which
+sends it bit by bit); signalled by the `UDRE0` (Data Register Empty) flag in `UCSR0A`:
 
 ```c
 /**
  * @brief Transmit a single byte over UART, blocking until the data register is free.
  *
- * @param[in] data Byte to transmit.
+ * @param[in] byte Byte to transmit.
  */
-static void serial_write_byte(const char data)
+static void serial_write_byte(const uint8_t byte)
 {
-    while (0U == (UCSR0A & (1U << UDRE0))); // Wait for the register to free up.
-    UDR0 = data;
+    while (0U == (UCSR0A & (1U << UDRE0))) {} // Wait for the register to free up.
+    UDR0 = byte;
 }
 ```
 
-Sending a whole string is just calling that in a loop, plus a trailing `\n\r` so each message
-starts on a fresh line in the terminal:
+Sending a whole string is just calling that in a loop, plus a trailing `\r\n` (carriage return,
+then line feed) so each message starts on a fresh line in the terminal:
 
 ```c
 /**
@@ -104,6 +104,8 @@ static void serial_print(const char* text)
     serial_write_byte('\n');
 }
 ```
+
+---
 
 ## A.4 Simple TX example
 A first fully working example: A.2's `serial_init()` and A.3's `serial_write_byte()`/
@@ -128,7 +130,7 @@ driver out into its own header and source file once there's enough of it to be w
 
 /** GPIO operations. */
 #define LED1_TOGGLE PINB = (1U << LED1)    // Toggle LED1.
-#define LED1_ENABLED (PINB & (1U << LED1)) // High if LED1 is enabled, low otherwise.
+#define LED1_ENABLED (PORTB & (1U << LED1)) // High if LED1 is enabled, low otherwise.
 
 /** Time parameters. */
 #define BLINK_SPEED_MS 500U // Blink speed in ms.
@@ -157,7 +159,7 @@ static void serial_init(void)
 /**
  * @brief Transmit a single byte over UART, blocking until the data register is free.
  *
- * @param[in] data Byte to transmit.
+ * @param[in] byte Byte to transmit.
  */
 static void serial_write_byte(const uint8_t byte)
 {
@@ -232,6 +234,12 @@ int main(void)
     return 0;
 }
 ```
+
+`LED1_ENABLED` reads `PORTB` here, not `PINB`. A pin's level reaches `PINB` through a synchronizer
+that runs one clock cycle behind, so reading back a level the program has just set needs an
+instruction in between (the datasheet uses a `nop`). In this loop the compiler puts the read
+directly after the toggle, and a `PINB` read would still see the old level, reporting every
+transition the wrong way round. `PORTB` holds what the program last wrote, and changes at once.
 
 ---
 
@@ -355,7 +363,8 @@ int main(void)
 }
 ```
 
-`%d` for `int`, `%u` for unsigned, `%u` used here since `count` is `uint16_t`. Floating-point
+`%d` for `int`, `%u` for unsigned, `%u` used here since `counter` is a `uint16_t`, which is an
+`unsigned int` on this target. Floating-point
 formatting in AVR's default `sprintf()` is often disabled or costly to link in; prefer integers
 (e.g. scale a reading to hundredths and print the two parts separately) unless you've confirmed
 float formatting is available in your toolchain.
@@ -363,8 +372,7 @@ float formatting is available in your toolchain.
 ---
 
 ## A.6 Example: button toggles an LED, reports over serial
-Button on D13, LED on D9. Each press flips the LED and reports its new state plus a running count
-of toggles.
+Button on D13, LED on D9. Each press flips the LED and reports its new state.
 
 ![](./images/circuit_serial_with_gpios.png)
 
@@ -388,10 +396,16 @@ The driver ([driver/serial.h](../serial_driver_demo/include/driver/serial.h),
 [driver/serial.c](../serial_driver_demo/source/driver/serial.c)) adds one function beyond A.3-A.4's
 `serial_write_byte()`/`serial_print()`: `serial_write()`, which takes a raw `uint8_t` buffer
 and a length, for arbitrary binary data rather than NUL-terminated text. `main.c` below still only
-needs `serial_print()`, the same convenience wrapper already familiar from A.3-A.4. `main.c`
-itself is shown in full below:
+needs `serial_print()`, the same convenience wrapper already familiar from A.3-A.4, with one
+difference: the driver's version doesn't append a line ending of its own. It sends the text as
+written, turning each `\n` in it into `\r\n` on the way out, which is why the messages below end
+in `\n`. `serial_write_byte()` is a `static` helper inside `serial.c`, no longer something
+callers can reach. `main.c` itself is shown in full below:
 
 ```c
+/**
+ * @file Serial driver demo.
+ */
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -424,10 +438,10 @@ itself is shown in full below:
 /** Limit parameters. */
 #define OVF_TIME_MS (TICK_PERIOD_MS * TICK_MAX)     // Time between each overflow in ms.
 #define OVF_MAX (DEBOUNCE_TIMEOUT_MS / OVF_TIME_MS) // Overflows needed for timeout.
-#define OVF_TIMEOUT (uint8_t)(OVF_MAX + 0.5F)        // Overflows needed for timeout, rounded.
+#define OVF_TIMEOUT (uint8_t)(OVF_MAX + 0.5F)       // Overflows needed for timeout, rounded.
 
 /** Flags that a LED1 event has occurred. */
-static bool led1_event = false;
+static volatile bool led1_event = false;
 
 /**
  * @brief Set up system.
@@ -455,9 +469,9 @@ static void setup(void)
 }
 
 /**
- * @brief Toggle LED1 and transmit a message over UART on button press.
+ * @brief Toggle LED1 on button press, and flag the event for main() to report.
  *
- *        Disable button interrupts for 300 ms to prevent debounce.
+ *        Disable button interrupts for 300 ms to suppress contact bounce.
  */
 ISR(PCINT0_vect)
 {
@@ -589,7 +603,7 @@ an optional `timeout_ms` so a sender that never shows up can't hang the program 
 int16_t read(uint8_t* buf, const uint16_t buflen, const uint16_t timeout_ms)
 {
     // Check the input parameters, return -1 if invalid.
-    if ((NULL == buf) || (buflen == 0U)) { return -1; }
+    if ((NULL == buf) || (0U == buflen)) { return -1; }
     uint16_t rx_count = 0U;
 
     if (0U == timeout_ms)

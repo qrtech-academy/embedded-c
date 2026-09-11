@@ -36,7 +36,7 @@
 #define OVF_TIMEOUT (uint8_t)(OVF_MAX + 0.5F)       // Overflows needed for timeout, rounded.
 
 /** Flags that a LED1 event has occurred. */
-static bool led1_event = false;
+static volatile bool led1_event = false;
 
 /**
  * @brief Set up system.
@@ -64,9 +64,9 @@ static void setup(void)
 }
 
 /**
- * @brief Toggle LED1 and transmit a message over UART on button press.
+ * @brief Toggle LED1 on button press, and flag the event for main() to report.
  *
- *        Disable button interrupts for 300 ms to prevent debounce.
+ *        Disable button interrupts for 300 ms to suppress contact bounce.
  */
 ISR(PCINT0_vect)
 {

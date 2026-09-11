@@ -1,7 +1,8 @@
 /**
  * @brief GPIO driver stub.
  */
-#pragma once
+#ifndef DRIVER_GPIO_STUB_H_
+#define DRIVER_GPIO_STUB_H_
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -11,6 +12,8 @@
 /**
  * @brief Create new GPIO stub.
  *
- * @return The new GPIO instance, or a nullptr on failure.
+ * @return The new GPIO instance, or NULL on failure.
  */
 gpio_interface_t* gpio_stub_new(void);
+
+#endif /* DRIVER_GPIO_STUB_H_ */

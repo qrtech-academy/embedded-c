@@ -2,7 +2,7 @@
 
 ## Concepts
 **1.** The watchdog's `WDE`/prescaler bits need the same `WDCE`-then-write-within-four-cycles
-pattern as EEPROM's `EEMPE`/`EEPE` (L07). Unlike EEPROM, this isn't just a hardware quirk, it's
+pattern as EEPROM's `EEMPE`/`EEPE` (L07). As with EEPROM, this isn't just a hardware quirk, it's
 a deliberate safety feature. What is it protecting against?
 
 ---

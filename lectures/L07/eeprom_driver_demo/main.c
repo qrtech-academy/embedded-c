@@ -42,7 +42,7 @@
 #define EEPROM_LED1_OFF 0U     // Stored value indicating that LED1 is off.
 
 /** Flags that a LED1 event has occurred. */
-static bool led1_event = false;
+static volatile bool led1_event = false;
 
 /**
  * @brief Print the LED1 state over UART.
@@ -87,9 +87,9 @@ static void setup(void)
 }
 
 /**
- * @brief Toggle LED1 and transmit a message over UART on button press.
+ * @brief Toggle LED1 on button press, and flag the event for main() to report.
  *
- *        Disable button interrupts for 300 ms to prevent debounce.
+ *        Disable button interrupts for 300 ms to suppress contact bounce.
  */
 ISR(PCINT0_vect)
 {
@@ -97,7 +97,7 @@ ISR(PCINT0_vect)
     BTN1_INT_DISABLE;
     TIMER0_ENABLE;
 
-    // Toggle LED1 and save its new state if BTN1 is pressed.
+    // Toggle LED1 and flag the event if BTN1 is pressed.
     if (BTN1_PRESSED)
     {
         LED1_TOGGLE;

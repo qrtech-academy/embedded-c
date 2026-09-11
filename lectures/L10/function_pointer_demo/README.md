@@ -64,7 +64,8 @@ The example demonstrates:
   * `read()`
   * `toggle()`
   * `enable_pci()`
-* The requirement that callers check the return value of `gpio_init()` before using the instance.
+* A `bool` result from `gpio_init()` that callers must check whenever the pin number could be out
+  of range.
 * Two fields, `pin` and `pcicrx`, that cannot be declared `const`, because their values are
   assigned during `gpio_init()` rather than when the object itself is declared.
 * Runtime initialization of a struct whose hardware configuration is not known at compile time.
@@ -183,8 +184,9 @@ The example demonstrates:
 * [main.c](./main.c):
   * Declares one caller-owned `gpio_t` instance for the LED on D9.
   * Declares one caller-owned `gpio_t` instance for the button on D13.
-  * Initializes the EEPROM, UART, watchdog, GPIO, and timer-related hardware.
-  * Checks whether each call to `gpio_init()` succeeds.
+  * Initializes the watchdog first, then the GPIOs, the debounce timer and the UART.
+  * Calls `gpio_init()` with two pin numbers known to be valid, so it doesn't check the results;
+    code that takes its pin numbers from elsewhere must.
   * Restores the previously saved LED state from EEPROM.
   * Applies the restored state to the LED.
   * Arms the button's pin-change interrupt through its `enable_pci()` function pointer.
@@ -204,7 +206,7 @@ The example demonstrates:
   * Uses the timer interrupt only for debounce timing.
   * Resets the watchdog once per main-loop iteration.
   * Checks the event flag from normal program context.
-  * Clears or consumes the event flag before processing the event.
+  * Clears the event flag once the new state has been written to EEPROM.
   * Reads the LED's new state.
   * Writes the new state to EEPROM.
   * Reports the new state through UART.

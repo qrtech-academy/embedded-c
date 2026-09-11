@@ -58,6 +58,7 @@ typedef struct gpio
      * @return GPIO state (true = high, false = low).
      */
     bool (*read)(const struct gpio* self);
+
     /**
      * @brief Toggle state of the given GPIO.
      *
@@ -78,7 +79,7 @@ typedef struct gpio
  * @brief Initialize GPIO.
  *
  * @param[in] self GPIO instance.
- * @param[in] pin Digital pin to use Must be in range [0, 13].
+ * @param[in] pin Digital pin to use. Must be in range [0, 13].
  * @param[in] mode GPIO mode.
  *
  * @return True on success, false on failure.

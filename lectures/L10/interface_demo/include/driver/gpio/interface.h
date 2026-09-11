@@ -1,7 +1,8 @@
 /**
- * @brief GPIO interface.h
+ * @brief GPIO interface.
  */
-#pragma once
+#ifndef DRIVER_GPIO_INTERFACE_H_
+#define DRIVER_GPIO_INTERFACE_H_
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -27,7 +28,7 @@ typedef struct gpio_vtable
     /**
      * @brief Delete given GPIO.
      *
-     *        Relase allocated resources and set the corresponding pointer to
+     *        Release allocated resources and set the corresponding pointer to
      * null.
      *
      * @param[in] self Double pointer to the GPIO to delete.
@@ -71,3 +72,5 @@ typedef struct gpio_interface
     /** Pointer to the GPIO virtual table. */
     const gpio_vtable_t* vptr;
 } gpio_interface_t;
+
+#endif /* DRIVER_GPIO_INTERFACE_H_ */

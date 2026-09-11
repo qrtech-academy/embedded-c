@@ -38,8 +38,8 @@
 * At 16 MHz with a ÷256 prescaler, what's the resulting tick period?
 * What's the difference between what triggers `TIMERn_OVF_vect` and what triggers
   `TIMERn_COMPA_vect`?
-* Why is `overflow_count` declared `volatile` in the lecture's example, and what could go wrong
-  if it weren't?
+* Why is `volatile` optional on `ovf_count` in the lecture's Timer 0 example, and when does a
+  variable shared with an ISR genuinely need it?
 
 ---
 

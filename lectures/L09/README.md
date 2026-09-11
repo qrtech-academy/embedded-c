@@ -9,8 +9,8 @@
 * Building a GPIO (`gpio_t`) driver, split into a header and a source file.
 * Worked example: rebuilding L08's watchdog demo on `gpio_t`, adding pin-change-interrupt support
   to the GPIO driver along the way.
-* Exercise: a complete `Timer` driver, with its own header/source split and a callback, built the
-  same way as `gpio_t`.
+* Exercise: a complete `timer_t` driver, with its own header/source split and a callback, built
+  the same way as `gpio_t`.
 
 ---
 

@@ -5,7 +5,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include <avr/interrupt.h>
 #include <avr/io.h>
 
 #include "driver/gpio.h"
@@ -50,7 +49,7 @@ static void gpio_toggle(gpio_t* self)
 }
 
 // -----------------------------------------------------------------------------
-static void gpio_enable_pci(gpio_t* self, bool enable)
+static void gpio_enable_pci(gpio_t* self, const bool enable)
 {
     // Check the GPIO instance, terminate if invalid.
     if (NULL == self) { return; }
@@ -60,7 +59,6 @@ static void gpio_enable_pci(gpio_t* self, bool enable)
     {
         PCICR |= (1U << self->pcicrx);
         *self->pcmskx |= (1U << self->pin);
-        sei();
     }
     else { *self->pcmskx &= ~(1U << self->pin); }
 }

@@ -31,7 +31,8 @@ This function works as intended, but it has some flaws:
   non-blocking delays and precise periodic events.
 * The ATmega328P has three: **Timer 0** and **Timer 2** are 8-bit (count 0–255), **Timer 1** is
   16-bit (count 0–65535). Their registers follow a consistent naming pattern; swap the digit
-  (`0`/`1`/`2`) and everything else is the same.
+  (`0`/`1`/`2`) and the names carry over, although, as A.2 and A.5 show, not every bit pattern does
+  (Timer 2's prescaler bits, and the bit that selects CTC mode on Timer 1).
 
 ---
 
@@ -40,8 +41,8 @@ Pick a **prescaler** (a clock divider) to get a manageable tick rate. At 16 MHz 
 prescaler:
 
 ```
-tick frequency = 16,000,000 / 1024 ≈ 15,625 Hz
-tick period    = 1 / 15,625 ≈ 0.064 ms
+tick frequency = 16,000,000 / 1024 = 15,625 Hz
+tick period    = 1 / 15,625 = 0.064 ms
 ```
 
 For an 8-bit timer, one full count (0→255, i.e. 256 ticks) triggers one **overflow**. To get a
@@ -88,16 +89,18 @@ There are two modes that will be covered in this lecture:
   `OCRnA`), fires `TIMERn_COMPA_vect`, and resets to 0, useful when the period you want doesn't
   cleanly divide into 256 or 65536 ticks.
 
-Both need the same three steps: enable interrupts globally, set the prescaler, and (for CTC) set
-the compare value and the mode bit.
+Both need the same steps: set the prescaler (which also starts the timer), enable the timer's own
+interrupt in `TIMSKn`, and enable interrupts globally. CTC additionally needs the compare value and
+the mode bit.
 
 ---
 
 ## A.4 Non-blocking blink using Timer 0 (Normal Mode)
-LED on D9 blinks at approximately every 500 ms; no `_delay_ms()` anywhere, so the rest of
-`main()`'s loop stays free to do other work.
+LED on D9 toggles approximately every 500 ms (31 overflows of 16.384 ms each, 508 ms); no
+`_delay_ms()` anywhere, so the rest of `main()`'s loop stays free to do other work. The circuit is
+L02's first one; its button on D13 isn't used here:
 
-![](./images/timer_one_led.png)
+![](../../L02/appendix/images/circuit_led_follows_button.png)
 
 ```c
 #include <stdint.h>
@@ -162,18 +165,20 @@ int main(void)
 }
 ```
 
-`TICK_MAX` and `OVF_MAX` are the calculation macros covered in
-[L01 Appendix A.12](../../L01/appendix/a_c_fundamentals.md#a12-macros-define): `TICK_MAX`
+`OVF_PERIOD_MS` and `OVF_MAX` are the calculation macros covered in
+[L01 Appendix A.12](../../L01/appendix/a_c_fundamentals.md#a12-macros-define): `OVF_PERIOD_MS`
 parenthesizes its whole body the way `TICKS_NEEDED` does there, and `OVF_MAX` gets the same safety
-from its leading `(uint8_t)` cast instead, a cast binds as tightly as a parenthesized expression,
-so wrapping the division in one has the same effect as an extra pair of parens would.
+from its leading `(uint8_t)` cast instead: the cast applies to the parenthesized division that
+follows it, and a cast binds tighter than any arithmetic or comparison operator, so the expanded
+macro still acts as a single operand wherever it's used.
 
 `ovf_count` here is a function-local `static` variable, scoped entirely inside the ISR: nothing
 outside `ISR(TIMER0_OVF_vect)` ever touches it. That means `volatile` isn't actually load-bearing
-on this specific variable, the compiler can already see every read and write to `ovf_count` within
-this one function body, unlike A.5's `led_state`/`led1_lit` below, which genuinely are shared
-across two different ISRs and need it. Leaving `volatile` on here is a harmless habit; the moment
-to actually rely on it is the moment something outside this ISR needs to read `ovf_count` too.
+on this specific variable: the compiler can already see every read and write to `ovf_count` within
+this one function body, and nothing else can change it between two of them. Leaving `volatile` on
+here is a harmless habit. The moment to actually rely on it is the moment code outside this ISR
+needs to read `ovf_count` too, above all a loop in `main()` that waits for it to change, the
+situation L03 Appendix A.4's `blink_state` was in.
 
 ---
 
@@ -182,8 +187,8 @@ Same idea, but Timer 1's extra range plus CTC mode let you hit a period directly
 overflow counts except for very long delays. Register names swap the `0` for a `1`; CTC needs one
 extra bit, `WGM12`, to select CTC instead of Normal Mode.
 
-`OCR1A` counts from `0` up to the value you write, so it takes `(OCR1A + 1)` ticks to reach it and
-fire a compare-match interrupt. To hit a specific timeout, work out how many ticks that timeout
+The counter, `TCNT1`, counts from `0` up to the value you write to `OCR1A`, so it takes
+`(OCR1A + 1)` ticks to reach it and fire a compare-match interrupt. To hit a specific timeout, work out how many ticks that timeout
 needs, then subtract one:
 
 ```
@@ -192,11 +197,16 @@ OCR1A        = ticks needed - 1
 ```
 
 E.g. for a 100 ms timeout at a 0.064 ms tick (÷1024 prescaler): `100 / 0.064 = 1562.5` ticks
-needed, which would be rounded to 1563. So `OCR1A = 1563 - 1 = 1562`, the value written below:
+needed, exactly halfway between 1562 ticks (99.968 ms) and 1563 (100.032 ms), which are equally
+close. Rounding up gives 1563, so `OCR1A = 1563 - 1 = 1562`. The macros below make the same
+calculation in floating point and land on `1561` instead, one tick short: `0.064F` can't be stored
+exactly and is a hair above `0.064`, so the division gives a hair under `1562.5`, and the rounding
+goes down. On a half tick either answer is as good as the other; a timeout that doesn't land on
+one, like Appendix B exercise 6's two seconds, comes out the same either way:
 
 ```c
 #define TIMEOUT_MS 100U                            // Timeout in ms.
-#define TICK_PEROID_MS 0.064F                      // Tick period, prescaler 1024.
+#define TICK_PERIOD_MS 0.064F                      // Tick period, prescaler 1024.
 #define CMP_MAX (TIMEOUT_MS / TICK_PERIOD_MS - 1U) // Compare value.
 #define TICK_MAX (uint16_t)(CMP_MAX + 0.5F)        // Rounded compare value.
 
@@ -205,20 +215,23 @@ OCR1A  = TICK_MAX;                                    // Set timeout to 100 ms.
 TIMSK1 = (1U << OCIE1A);                              // Enable compare-match interrupt.
 ```
 
-Timer 1's 16-bit range means `1562` fits directly; Timer 0's 8-bit range (max `255`) couldn't hold
+Timer 1's 16-bit range means `1561` fits directly; Timer 0's 8-bit range (max `255`) couldn't hold
 a value that large, which is exactly why A.4 had to count multiple overflows in software instead.
 
 Two LEDs on D9/D10 alternate once every 100 ms while enabled; a button on D13 toggles them on and
-off entirely, cutting the LEDs immediately rather than waiting for the next compare match:
+off entirely, cutting the LEDs immediately rather than waiting for the next compare match. The
+circuit is the one from L02 Appendix A.6:
 
-![](./images/timer_two_leds.png)
+![](../../L02/appendix/images/circuit_two_led_blink.png)
 
 ```c
 #include <stdbool.h>
+#include <stdint.h>
 
 #include <avr/interrupt.h>
 #include <avr/io.h>
 
+/** GPIO pins. */
 #define LED1 1U // D9  -> PORTB1.
 #define LED2 2U // D10 -> PORTB2.
 #define BTN1 5U // D13 -> PORTB5.
@@ -315,9 +328,13 @@ int main(void)
 }
 ```
 
-`led_state` and `led1_lit` are `volatile` because they're shared between two different ISRs;
-each one needs to see the other's latest write, the same reasoning as A.4's `ovf_count`, just
-between two interrupt handlers instead of an ISR and `main()`.
+`led_state` is `volatile` because it's shared: the button's ISR writes it and the timer's ISR reads
+it. That follows the course's rule of making anything shared with an ISR `volatile`, although
+between two ISRs the qualifier is, strictly, the same harmless habit as on A.4's `ovf_count`: on
+the AVR an ISR runs to completion with interrupts disabled, so nothing can change `led_state` in
+the middle of one, and each ISR reads it afresh every time it runs. It becomes load-bearing the
+moment `main()`'s loop reads it too. `led1_lit` is only ever touched by the timer's ISR, so it
+could just as well be a `static` local inside it, like `ovf_count`.
 
 Timer 2 mirrors Timer 0 (8-bit, Normal/CTC), with one gotcha: its ÷1024 prescaler bit pattern is
 `111`, not `101` as on Timers 0/1.

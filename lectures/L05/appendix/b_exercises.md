@@ -24,9 +24,11 @@ of 1 Hz. What value changes, and what does the new `OVF_MAX` work out to?
 
 ---
 
-**5.** The lecture's example declares `ovf_count` as `volatile`. Suppose that qualifier were
-removed; what specific failure mode could this introduce, and why would it only show up sometimes
-rather than every run?
+**5.** The lecture's Timer 0 example declares `ovf_count` as `volatile`, and A.4 says that removing
+the qualifier there would change nothing. Explain why. Then suppose `ovf_count` moved to file scope
+so that `main()` could wait for it, in a loop such as `while (10U > ovf_count) {}`. What specific
+failure could removing `volatile` now introduce, and why might it show up in one build and not in
+another?
 
 ---
 

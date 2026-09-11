@@ -46,7 +46,7 @@ int main(void)
 
     while (1)
     {
-        // Simulate button events every loop_cnt_MAX main-loop iterations.
+        // Simulate button events every LOOP_CNT_MAX main-loop iterations.
         simulate_btn_event(btn1);
 
         // Detect pressdown (rising edge).

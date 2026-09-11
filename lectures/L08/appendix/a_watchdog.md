@@ -68,8 +68,9 @@ typedef enum
 Cast a `watchdog_timeout_t` directly to `uint8_t` and write it to the `WDTCSR` prescaler bits.
 Its encoded value places the prescaler bits correctly for all ten timeout settings.
 
-Changing `WDE` or the prescaler bits needs the same kind of timed sequence as EEPROM's
-`EEMPE`/`EEPE` from L07, and for the same reason:
+Clearing `WDE`, or changing the prescaler bits, needs the same kind of timed sequence as EEPROM's
+`EEMPE`/`EEPE` from L07, and for the same reason (setting `WDE` alone doesn't, but this course's
+code always writes `WDE` and the timeout together, so it always uses the sequence):
 * It's a safety interlock, this time specifically so runaway code can't accidentally disable the
 one thing meant to catch it. `WDCE` (Watchdog Change Enable) must be set together with `WDE`, and
 the real configuration written within 4 cycles:
@@ -112,8 +113,8 @@ every peripheral so far (UART, ADC, timers, EEPROM): no header between the code 
 hardware, so nothing about what the chip is actually doing is hidden behind a macro.
 
 ```c
-#include <avr/io.h>
 #include <avr/interrupt.h>
+#include <avr/io.h>
 
 /**
  * @brief Enable the watchdog timer with a 1024 ms timeout.
@@ -157,6 +158,20 @@ Put this as the first line of `setup()`, unconditionally, before `watchdog_enabl
 other watchdog call. Skip it, and a single watchdog-triggered reset can leave the chip unable to
 ever turn the watchdog off again, whatever the running code tries to do about it.
 
+Clearing `WDRF` doesn't stop the watchdog, though, and after a watchdog reset it is still running.
+The reset cleared the prescaler bits, so it now runs at its shortest timeout, 16 ms. Configure the
+watchdog straight after clearing the flag, with the timeout you actually want (or turn it off),
+before anything slow: a `setup()` that first spends 16 ms on something else, and printing a
+single line at 9600 baud already takes that long, is reset again before it gets there, and again,
+forever. That's why A.5's `setup()` calls `watchdog_init()`, which clears `WDRF` and then arms
+the watchdog, before anything else.
+
+On an Uno you may never see this happen, because its bootloader clears `MCUSR` and switches the
+watchdog off before it starts your program. Don't rely on that: a program flashed without a
+bootloader, or run in a simulator, gets no such help. Nor do Nano boards with the older bootloader
+(the ones that need `-b 57600`, L02 Appendix D.7), which after a watchdog reset are known to get
+stuck resetting inside the bootloader itself, before your program ever runs.
+
 ---
 
 ## A.4 System Reset Mode vs. Interrupt Mode
@@ -179,7 +194,7 @@ sequence, so it's set separately, straight after:
  * @brief Enable the watchdog in Interrupt Mode: ISR(WDT_vect) runs on timeout instead of a
  *        system reset.
  *
- * @param[in] timeout Timeout to arm the watchdog with (A.2, Table 1).
+ * @param[in] timeout Timeout to arm the watchdog with (see A.2's table).
  */
 static void watchdog_enable_interrupt(const watchdog_timeout_t timeout)
 {
@@ -197,8 +212,8 @@ static void watchdog_enable_interrupt(const watchdog_timeout_t timeout)
 ## A.5 Worked example: petting the watchdog in L07's demo
 Extends [L07 Appendix A.4](../../L07/appendix/a_eeprom.md#a4-worked-example-persisting-led1s-state-across-resets)'s
 button-toggles-LED1-and-persists-to-EEPROM demo with a 1024 ms watchdog (System Reset Mode, A.2)
-on top. `setup()` calls `watchdog_init(WATCHDOG_TIMEOUT_1024MS)` once; `main()`'s loop calls
-`watchdog_reset()` first thing, every iteration, whether or not a button event happened that
+on top. `setup()` calls `watchdog_init(WATCHDOG_TIMEOUT_1024MS)` once, before anything else, for
+the reason A.3 gives; `main()`'s loop calls `watchdog_reset()` first thing, every iteration, whether or not a button event happened that
 iteration, same as A.1's pattern.
 
 ![](../../L06/appendix/images/circuit_serial_with_gpios.png)
@@ -272,7 +287,7 @@ The serial and EEPROM drivers were introduced in L06 and L07 respectively.
 #define EEPROM_LED1_OFF 0U     // Stored value indicating that LED1 is off.
 
 /** Flags that a LED1 event has occurred. */
-static bool led1_event = false;
+static volatile bool led1_event = false;
 
 /**
  * @brief Print the LED1 state over UART.
@@ -288,6 +303,10 @@ static void print_led1_state(void)
  */
 static void setup(void)
 {
+    // Initialize the watchdog first: after a watchdog reset it is still running, with a 16 ms
+    // timeout, and the rest of setup() takes longer than that.
+    watchdog_init(WATCHDOG_TIMEOUT_1024MS);
+
     // Configure LED1 as output.
     DDRB = (1U << LED1);
 
@@ -312,17 +331,14 @@ static void setup(void)
     }
     print_led1_state();
 
-    // Initialize watchdog with a 1024 timeout.
-    watchdog_init(WATCHDOG_TIMEOUT_1024MS);
-
     // Enable interrupts globally.
     sei();
 }
 
 /**
- * @brief Toggle LED1 and transmit a message over UART on button press.
+ * @brief Toggle LED1 on button press, and flag the event for main() to report.
  *
- *        Disable button interrupts for 300 ms to prevent debounce.
+ *        Disable button interrupts for 300 ms to suppress contact bounce.
  */
 ISR(PCINT0_vect)
 {
@@ -330,7 +346,7 @@ ISR(PCINT0_vect)
     BTN1_INT_DISABLE;
     TIMER0_ENABLE;
 
-    // Toggle LED1 and save its new state if BTN1 is pressed.
+    // Toggle LED1 and flag the event if BTN1 is pressed.
     if (BTN1_PRESSED)
     {
         LED1_TOGGLE;
@@ -405,9 +421,9 @@ Windows via Microchip Studio, recreate this folder structure inside the project 
 ---
 
 ## A.6 Why no structs here
-Both UART (L06), EEPROM (L07) and the watchdog get away with plain functions and no struct,
-unlike where this course is headed next. The ATmega328P has exactly one EEPROM and exactly one
-watchdog; there's no second instance to distinguish between, no `self` parameter needed, nothing
+UART (L06), EEPROM (L07) and the watchdog all get away with plain functions and no struct,
+unlike where this course is headed next. The ATmega328P has exactly one UART, exactly one EEPROM
+and exactly one watchdog; there's no second instance to distinguish between, no `self` parameter needed, nothing
 to bundle. A struct would just be ceremony around state that only ever exists once.
 
 LEDs, buttons, and timers aren't so lucky, a program regularly wants several of each, and L04's

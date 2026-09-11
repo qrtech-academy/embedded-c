@@ -187,7 +187,8 @@ code block. In a real project a driver is split across a header and a source fil
 `sensor.h`/`sensor.c`, include guard and all:
 * The header (`gpio.h`) is the public interface: the `gpio_t` and `gpio_mode_t` type definitions,
   plus a documented prototype for every function callers are allowed to use.
-* The source file (`gpio.c`) `#include`s its own header first, then defines those same functions.
+* The source file (`gpio.c`) `#include`s its own header, after the standard and AVR headers as
+  everywhere in this course, then defines those same functions.
   Callers only ever see the header; the definitions in `gpio.c` are what actually gets compiled.
 
 One thing is new compared to `sensor.h`: that header only ever declared a function, callers never
@@ -263,6 +264,7 @@ void gpio_write(gpio_t* self, bool state);
  * @return GPIO state (true = high, false = low).
  */
 bool gpio_read(const gpio_t* self);
+
 /**
  * @brief Toggle state of the given GPIO.
  *
@@ -424,7 +426,9 @@ gpio_driver_demo/
 ```
 
 * The serial, EEPROM, and watchdog drivers were introduced in L06–L08.
-* [driver/gpio.h](../gpio_driver_demo/include/driver/gpio.h) and [driver/gpio.c](../gpio_driver_demo/source/driver/gpio.c) extend the `gpio_t` type introduced in Appendices A.2 and A.3:
+* [driver/gpio.h](../gpio_driver_demo/include/driver/gpio.h) and
+  [driver/gpio.c](../gpio_driver_demo/source/driver/gpio.c) extend the `gpio_t` type introduced in
+  Appendices A.2 and A.3.
 * The extended driver adds one capability not covered in those sections:
   * `gpio_enable_pci()` enables or disables the pin-change interrupt for a GPIO.
   * It does this by writing the same `PCICR` and `PCMSKx` bits that were configured manually in L08 Appendix A.5.
@@ -475,7 +479,7 @@ gpio_driver_demo/
 #define EEPROM_LED1_OFF 0U     // Stored value indicating that LED1 is off.
 
 /** Flags that a LED1 event has occurred. */
-static bool led1_event = false;
+static volatile bool led1_event = false;
 
 /** GPIO instances. */
 static gpio_t led1 = {&DDRB, &PORTB, &PINB, &PCMSK0, PCIE0, LED1_PIN};
@@ -495,6 +499,10 @@ static void print_led1_state(void)
  */
 static void setup(void)
 {
+    // Initialize the watchdog first: after a watchdog reset it is still running, with a 16 ms
+    // timeout, and the rest of setup() takes longer than that.
+    watchdog_init(WATCHDOG_TIMEOUT_1024MS);
+
     // Initialize GPIOs.
     gpio_init(&led1, GPIO_MODE_OUTPUT);
     gpio_init(&btn1, GPIO_MODE_INPUT_PULLUP);
@@ -514,17 +522,14 @@ static void setup(void)
     }
     print_led1_state();
 
-    // Initialize watchdog with a 1024 timeout.
-    watchdog_init(WATCHDOG_TIMEOUT_1024MS);
-
     // Enable interrupts globally.
     sei();
 }
 
 /**
- * @brief Toggle LED1 and transmit a message over UART on button press.
+ * @brief Toggle LED1 on button press, and flag the event for main() to report.
  *
- *        Disable button interrupts for 300 ms to prevent debounce.
+ *        Disable button interrupts for 300 ms to suppress contact bounce.
  */
 ISR(PCINT0_vect)
 {
@@ -532,7 +537,7 @@ ISR(PCINT0_vect)
     gpio_enable_pci(&btn1, false);
     TIMER0_ENABLE;
 
-    // Toggle LED1 and save its new state if BTN1 is pressed.
+    // Toggle LED1 and flag the event if BTN1 is pressed.
     if (gpio_read(&btn1))
     {
         gpio_toggle(&led1);

@@ -29,7 +29,7 @@ int main(void)
 * `return 0` from `main()` signals success to the OS. C99+ makes it implicit if omitted, but write
   it anyway.
 * A Doxygen comment above a function, written in the imperative mood and documenting its contract,
-  is conventional throughout this codebase. For example, a function that computes voltage by Ohms
+  is conventional throughout this codebase. For example, a function that computes voltage by Ohm's
   law can be documented as shown below:
 
 ```c
@@ -52,7 +52,7 @@ double compute_voltage(double resistance_kohm, double current_ma);
 | `void` | nothing (no return value) | – |
 | `int` | signed integer | 2–4 bytes |
 | `float` | single-precision float | 4 bytes |
-| `double` | double-precision float (default for float literals) | 8 bytes |
+| `double` | double-precision float (default for float literals) | 8 bytes (4 with avr-gcc) |
 | `char` | one character | 1 byte |
 | `char[]` / `char*` | string (array of `char`, NUL-terminated) | – |
 | `bool` (`<stdbool.h>`) | `true` / `false` | 1 byte |
@@ -171,7 +171,7 @@ sensor_state_t state = SENSOR_STATE_IDLE;
 ```
 
 * Unless you assign values explicitly, members count up from 0 in declaration order
-  (`SENSOR_STATE_IDLE == 0`, `SENSOR_STATE_SAMPLING == 1`, ...):
+  (`SENSOR_STATE_IDLE == 0`, `SENSOR_STATE_SAMPLING == 1`, ...).
 * Assign explicit values when the numbers themselves matter, e.g. they're written to a hardware
   register.
 * Prefer this over a block of `#define SENSOR_STATE_IDLE 0` macros: same cost at runtime, but the
@@ -201,8 +201,8 @@ sensor_state_t state = SENSOR_STATE_IDLE;
 |---|---|
 | `%d` / `%i` | `int` |
 | `%u` | unsigned int |
-| `%f` / `%lf` | `float` / `double`, fixed decimals |
-| `%g` | float/double, shortest representation |
+| `%f` | `double` (a `float` argument is promoted to `double`), fixed decimals; `%lf` means the same |
+| `%g` | `double`, shortest representation |
 | `%c` | single `char` |
 | `%s` | string (`char*`) |
 | `%p` | pointer address |
@@ -236,7 +236,7 @@ return_type function_name(param_type param_name, ...)
  * @brief Compute resistance from voltage and current (Ohm's law).
  *
  * @param[in] voltage Voltage in V.
- * @param[in] current Current in mA. Must not be 0.
+ * @param[in] current Current in mA.
  *
  * @return Resistance in kOhm, or 0 if the current is 0.
  */
@@ -373,7 +373,7 @@ pointer exactly like calling the function by name:
 #include <stdio.h>
 
 static void greet1(void) { printf("Hello!\n"); }
-static void greet2(void) { printf("Worls!\n"); }
+static void greet2(void) { printf("World!\n"); }
 
 int main(void)
 {
@@ -400,7 +400,7 @@ static void on_timeout(void) { printf("Timed out!\n"); }
 
 static void run(callback_t cb) // cb holds a function's address, not a value.
 {
-    callback(); // Calls whichever function was passed in.
+    cb(); // Calls whichever function was passed in.
 }
 
 int main(void)
@@ -534,7 +534,7 @@ data = NULL;
  */
 static void array_delete(int** data)
 {
-   if ((NULL == data) || (NULL == *data)) { return; }
+    if ((NULL == data) || (NULL == *data)) { return; }
     free(*data);
     *data = NULL;
 }
@@ -552,10 +552,10 @@ static void array_delete(int** data)
  */
 typedef struct
 {
-    /* Data field of floating-point numbers. */
+    /** Data field of floating-point numbers. */
     double* data;
 
-    /** Number of elements in the datafield. */
+    /** Number of elements in the data field. */
     size_t size;
 } vector_t;
 
@@ -582,7 +582,7 @@ static void vector_clear(vector_t* self)
 static int vector_resize(vector_t* self, const size_t size)
 {
     if (NULL == self) { return 1; }
-  
+
     if (0U == size)
     {
         vector_clear(self);
@@ -644,7 +644,8 @@ chance to group anything:
 #define TICKS_NEEDED TIMEOUT_MS / CLOCK_TIME_MS // No outer parentheses: fragile.
 
 const uint16_t double_ticks = 2U * TICKS_NEEDED; // Expands to: 2U * TIMEOUT_MS / CLOCK_TIME_MS.
-// * and / share precedence and evaluate left-to-right, so this one happens to still be correct.
+// * and / share precedence and group left-to-right: (2U * TIMEOUT_MS) / CLOCK_TIME_MS. Integer
+// division truncates, so that equals 2U * (TIMEOUT_MS / CLOCK_TIME_MS) only if it divides evenly.
 ```
 
 ```c
@@ -655,9 +656,9 @@ const uint16_t double_ticks = 2 * TICKS_NEEDED;
 // the macro at its call site.
 ```
 
-The `/`-only example above happens to survive without the parentheses because `*` and `/` share
-precedence, but that's luck, not safety; swap in a macro built from `+` or `-` and it breaks
-immediately:
+The `/`-only example above only survives without the parentheses when `TIMEOUT_MS` happens to be a
+multiple of `CLOCK_TIME_MS`, and that's luck, not safety; swap in a macro built from `+` or `-` and
+it breaks immediately:
 
 ```c
 #define TIMEOUT_PLUS_MARGIN TIMEOUT_MS + 10U   // No parentheses: broken.
@@ -688,8 +689,8 @@ the macro's body. Anything with a side effect duplicates that side effect:
 #define SQUARE(x) ((x) * (x))
 
 uint8_t i = 5U;
-const uint8_t result = SQUARE(i++);   // Expands to ((i++) * (i++)): i is incremented twice, and
-                                       // which multiplication reads which value is unspecified.
+const uint8_t result = SQUARE(i++);   // Expands to ((i++) * (i++)): i is modified twice with
+                                       // nothing to order the two, which is undefined behavior.
                                        // A real function would increment i exactly once.
 ```
 
@@ -730,13 +731,14 @@ choice:
 
 Embedded C keeps reaching for `#define` anyway, for one specific reason: a `const` variable in C is
 not a *compile-time constant expression* the way it is in C++. Even though its value can't change
-at runtime, the compiler doesn't treat it as a literal for contexts that require one, such as an
-array size or a `#if` preprocessor check. A `#define` (or an `enum` constant) is a true
-compile-time constant and works in both. It also pays off in generated code for something like
-`PORTB |= (1U << LED1)`: with `LED1` a compile-time constant, the compiler can usually fold the
-whole expression into a single bit-set instruction; with `LED1` a `const uint8_t` variable, nothing
-stops it from compiling, but the shift amount is only known at runtime, so the compiler may emit an
-actual runtime shift instead of folding it away. That's the real reason this course's pin numbers
+at runtime, the compiler doesn't treat it as a literal for contexts that require one, such as a
+`case` label, the size of a file-scope array, or a `#if` preprocessor check. A `#define` is a true
+compile-time constant and works in all three. An `enum` constant works in the first two, but not
+in `#if`: the preprocessor runs before the compiler and knows nothing about enums. It also pays off
+in generated code for something like `PORTB |= (1U << LED1)`: with `LED1` a compile-time
+constant, the compiler can usually fold the whole expression into a single bit-set instruction;
+with `LED1` a `const uint8_t` variable, nothing stops it from compiling, but the shift amount is
+only known at runtime, so the compiler may emit an actual runtime shift instead of folding it away. That's the real reason this course's pin numbers
 and bit positions are macros instead of `const uint8_t`s, not just convention.
 
 ---
