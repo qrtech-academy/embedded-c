@@ -1,0 +1,1184 @@
+% Section 10.1, from lectures/L10/appendix/a_encapsulation_and_polymorphism.md. Each of the three
+% demos is typeset in full at the end of the subsection that builds it (§10.1.2, §10.1.5 and
+% §10.1.6): the opening paragraphs and the list of files from its README.md, then every source file
+% not already printed. The READMEs' long "The example demonstrates:" lists are left out; they
+% restate this section.
+
+\section{Encapsulation and Polymorphism in C}
+\label{c10:sec:encapsulation}\label{c10:app:a}
+
+\subsection{Why hide a struct's fields}
+\label{c10:a:1}
+\begin{itemize}
+  \item Every driver in Chapter~\ref{c9:ch} is fully exposed: \code{gpio_t} and \code{timer_t}'s
+    fields are visible to any file that includes their definition.
+  \begin{itemize}
+    \item For something as simple as \code{gpio_t}, that's mostly harmless.
+    \item For \code{timer_t}, it's less so: nothing stops calling code from reaching in and setting
+      its elapsed-time field directly, skipping \code{timer_init()} and quietly breaking the
+      invariant \code{timer_running()}/\code{timer_reset()} depend on.
+  \end{itemize}
+  \item An \textbf{opaque struct} fixes this by splitting a driver across two files:
+  \begin{itemize}
+    \item A header that only forward-declares the struct's name and lists function prototypes.
+    \item A \file{.c} file that defines the struct's actual fields.
+    \item Callers only ever see a pointer to an incomplete type: they can pass it around and hand
+      it to the driver's functions, but they can't see or touch its fields, so they can't bypass
+      the functions meant to maintain its invariants.
+  \end{itemize}
+  \item Splitting a driver across a header and a \file{.c} file is what makes opacity possible:
+  \begin{itemize}
+    \item \Secref{c9:a:3} already did this split, for a different reason.
+    \item It only works when the struct's real definition lives somewhere the caller doesn't (and
+      can't) include.
+    \item The next section shows a lighter version of the same idea, hiding \emph{functions}
+      rather than fields, before \secref{c10:a:3} hides fields too.
+  \end{itemize}
+\end{itemize}
+
+\subsection{Hiding functions with \code{static}}
+\label{c10:a:2}
+\begin{itemize}
+  \item Chapter~\ref{c9:ch}'s \code{gpio_t} (\secref{c9:a:2}) stays exactly as public here: every
+    field still visible.
+  \item What changes is how its behavior is reached:
+  \begin{itemize}
+    \item \code{gpio_write()}, \code{gpio_read()}, \code{gpio_toggle()}, and
+      \code{gpio_enable_pci()} (new in \secref{c9:a:5}'s demo) become \code{static}.
+    \item At file scope, \code{static} means internal linkage: invisible outside \file{gpio.c}, a
+      different meaning than the storage-duration one it has on a local variable (see
+      \secref{c1:a:4}).
+    \item \code{gpio_t} gains four function pointers so the now-hidden functions are still
+      reachable, just through the struct instead of by name.
+  \end{itemize}
+\end{itemize}
+
+\noindent\file{driver/gpio.h}, \code{gpio_t}'s fields all still public:
+
+\begin{ccode}
+/**
+ * @file GPIO driver.
+ */
+#ifndef DRIVER_GPIO_H_
+#define DRIVER_GPIO_H_
+
+#include <stdbool.h>
+#include <stdint.h>
+
+/**
+ * @brief Enumeration of GPIO modes.
+ */
+typedef enum
+{
+    GPIO_MODE_INPUT,        ///< Standard GPIO input.
+    GPIO_MODE_INPUT_PULLUP, ///< GPIO input with its internal pull-up enabled.
+    GPIO_MODE_OUTPUT,       ///< GPIO output.
+} gpio_mode_t;
+
+/**
+ * @brief GPIO driver structure.
+ */
+typedef struct gpio
+{
+    /** Pointer to the data direction register associated with the GPIO. */
+    volatile uint8_t* ddrx;
+
+    /** Pointer to the output register associated with the GPIO. */
+    volatile uint8_t* portx;
+
+    /** Pointer to the input register associated with the GPIO. */
+    volatile uint8_t* pinx;
+
+    /** Pointer to the pin change mask register associated with the GPIO. */
+    volatile uint8_t* pcmskx;
+
+    /** Pin change interrupt control register bit (PCIEx) associated with the GPIO's port. */
+    uint8_t pcicrx;
+
+    /** Bit position of the GPIO pin within the associated port. */
+    uint8_t pin;
+
+    /** Set state of the given GPIO. Only supported for outputs. */
+    void (*write)(struct gpio* self, bool state);
+
+    /** Read state of the given GPIO. */
+    bool (*read)(const struct gpio* self);
+
+    /** Toggle state of the given GPIO. Only supported for outputs. */
+    void (*toggle)(struct gpio* self);
+
+    /** Enable/disable pin change interrupts for the given GPIO. */
+    void (*enable_pci)(struct gpio* self, bool enable);
+} gpio_t;
+
+/**
+ * @brief Initialize GPIO.
+ *
+ * @param[in] self GPIO instance.
+ * @param[in] pin  Digital pin to use. Must be in range [0, 13].
+ * @param[in] mode GPIO mode.
+ *
+ * @return True on success, false on failure.
+ */
+bool gpio_init(gpio_t* self, uint8_t pin, gpio_mode_t mode);
+
+#endif /* DRIVER_GPIO_H_ */
+\end{ccode}
+
+\begin{itemize}
+  \item Each function pointer's \code{self} parameter is typed \code{struct gpio*}, not
+    \code{gpio_t*}:
+  \begin{itemize}
+    \item \code{typedef struct gpio { ... } gpio_t;} only introduces the name \code{gpio_t} once
+      the whole declaration finishes, at the final \code{;} after the closing brace.
+    \item Inside the braces, while the struct is still being defined, \code{gpio_t} doesn't exist
+      yet: writing \code{gpio_t* self} there is a compile error
+      (\code{unknown type name 'gpio_t'}).
+    \item The tag \code{struct gpio}, on the other hand, is in scope from the moment
+      \code{struct gpio \{} appears, so a member can refer to a pointer to its own struct type by
+      tag, the same trick a linked list's \code{struct node* next} relies on.
+    \item Everywhere \emph{outside} the struct, \code{gpio_t} is the normal name to use; only these
+      member declarations, written before their own type has a name, need \code{struct gpio}
+      instead.
+  \end{itemize}
+\end{itemize}
+Unlike Chapter~\ref{c9:ch}'s \code{gpio_init(self, mode)}, which expected
+\code{ddrx}/\code{portx}/\code{pinx}/\code{pin} already set through a struct literal, this
+\code{gpio_init(self, pin, mode)} takes an Arduino pin number and works the registers out itself,
+following the pin-number rewrite from Exercise~\ref{c9:ex:4}: pins 0--7 map to \code{PORTD}, pins
+8--13 map to \code{PORTB}, and an out-of-range pin returns \code{false} without touching any
+register. \file{driver/gpio.c}:
+
+\cfile{lectures/L10/function_pointer_demo/source/driver/gpio.c}
+
+\begin{itemize}
+  \item Two fields that used to be \code{const}, \code{pin} and \code{pcicrx}, aren't anymore:
+  \begin{itemize}
+    \item Both used to be known at the call site and handed in through a struct literal before
+      \code{gpio_init()} ever ran.
+    \item Now \code{gpio_init()} derives them itself from the pin number argument and assigns them
+      with \code{self->pin = ...}/\code{self->pcicrx = ...}.
+    \item A \code{const} member can only be set once, by an initializer at the point a struct is
+      declared, never by assignment afterward, so once the value is only known and set inside
+      \code{gpio_init()}, the field can no longer stay \code{const}. Exercise~\ref{c9:ex:4} asks
+      this exact question for the non-function-pointer version of this same rewrite.
+  \end{itemize}
+\end{itemize}
+
+\begin{console}
+function_pointer_demo/
+├── Makefile
+├── main.c
+├── include/
+│   └── driver/
+│       ├── eeprom.h
+│       ├── gpio.h
+│       ├── serial.h
+│       └── watchdog.h
+└── source/
+    └── driver/
+        ├── eeprom.c
+        ├── gpio.c
+        ├── serial.c
+        └── watchdog.c
+\end{console}
+
+\begin{itemize}
+  \item \file{driver/gpio.h} and \file{driver/gpio.c} are the full driver shown above; the header
+    is printed with its full comments at the end of this section.
+  \item \file{driver/eeprom.h}/\file{.c}, \file{driver/serial.h}/\file{.c}, and
+    \file{driver/watchdog.h}/\file{.c} are the same EEPROM, UART, and watchdog drivers from
+    Chapters~\ref{c6:ch}--\ref{c8:ch}, wired in only so \file{main.c} has something to persist
+    state to and report over, unrelated to this chapter's material.
+\end{itemize}
+\file{main.c} toggles LED1 (\code{D9}) whenever BTN1 (\code{D13}) is pressed, debounces the button
+with a 300\,ms timer, persists the new LED state to EEPROM, reports it over serial, and kicks the
+watchdog every loop iteration:
+
+\cfile{lectures/L10/function_pointer_demo/main.c}
+
+\begin{itemize}
+  \item \code{led1.toggle(&led1)} and \code{btn1.enable_pci(&btn1, true)} instead of
+    \code{gpio_toggle(}\allowbreak\code{&led1)} and \code{gpio_enable_pci(&btn1, true)}: the same
+    call shape
+    \secref{c10:a:6}'s vtables use later, just with the pointers sitting directly on \code{gpio_t}
+    instead of behind a separate interface struct.
+  \item \code{PCINT0_vect} only toggles the LED, a single register write, and sets
+    \code{led1_event}; the EEPROM write and serial report both happen from \code{main()}'s loop
+    once \code{led1_event} is seen, following the same ISR-minimality discipline as
+    \secref{c6:a:6}: keep the ISR to the minimum, let \code{main()}'s loop handle anything that
+    can block.
+  \item A second ISR, \code{TIMER0_OVF_vect}, re-enables the button's interrupt after the 300\,ms
+    debounce window, using the same \code{enable_pci} function pointer \code{main()} used to arm
+    it.
+  \item Nothing here hides \code{led1}'s or \code{btn1}'s \emph{fields} yet: \code{led1.ddrx},
+    \code{led1.write}, all of it, are exactly as reachable as before. \code{static} only hid the
+    \emph{functions}; \secref{c10:a:3} hides the fields too.
+\end{itemize}
+Build and flash the same way as \secref{c9:a:5}: on Linux, run \code{make} in the demo's
+directory, \file{lectures/L10/function_pointer_demo} (\code{make flash} to program the board); on
+Windows via Microchip Studio, recreate this folder structure inside the project and add
+\file{include} as an include directory.
+
+\subsubsection{The function-pointer demo in full}
+The demo in \file{lectures/L10/function_pointer_demo} is about function pointers on a still-public
+GPIO driver: a \code{gpio_t} driver where the fields stay fully public, but
+\code{write}/\code{read}/\code{toggle}/\code{enable_pci} are reached only through function pointers
+stored on the struct itself.
+
+This example demonstrates encapsulation through \code{static} internal linkage rather than through
+an opaque struct. The fields of \code{gpio_t}, including its function pointers, remain visible and
+assignable from any source file that includes \file{driver/gpio.h}. Only the concrete functions
+behind those pointers are hidden, because their definitions have internal linkage inside
+\file{gpio.c}.
+
+\code{gpio_init()} accepts an Arduino digital pin number and derives the relevant ATmega328P
+registers, bit positions, and pin-change interrupt configuration. It also configures the pin and
+assigns all function pointers in a single initialization call.
+
+The implementation is written for compilation on an ATmega328P in Microchip Studio.
+
+\paragraph{Files}
+\begin{itemize}
+  \item \file{driver/gpio.h}:
+  \begin{itemize}
+    \item Contains the GPIO driver's public interface.
+    \item Defines \code{struct gpio} and its \code{gpio_t} typedef directly in the header.
+    \item Exposes every field of the GPIO instance to application code.
+    \item Stores the GPIO hardware information required by the internal operations.
+    \item Stores the pin's bit number within its hardware port.
+    \item Stores the pin-change interrupt group bit used with \code{PCICR}.
+    \item Includes four function pointers as struct members:
+    \begin{itemize}
+      \item \code{write()}
+      \item \code{read()}
+      \item \code{toggle()}
+      \item \code{enable_pci()}
+    \end{itemize}
+    \item Defines the function-pointer signatures used by the driver operations.
+    \item Defines the \code{gpio_mode_t} enum used to select the pin's operating mode.
+    \item Declares \code{gpio_init()}.
+    \item Exposes \code{gpio_init()} as the driver's only ordinary function with external linkage.
+    \item Allows callers to declare individual \code{gpio_t} objects or arrays of GPIO objects.
+    \item Requires callers to initialize each object before calling any stored function pointer.
+    \item Demonstrates that a public struct provides convention-based rather than enforced
+      encapsulation.
+  \end{itemize}
+  \item \file{driver/gpio.c}:
+  \begin{itemize}
+    \item Contains the GPIO driver's hardware-specific implementation.
+    \item Defines \code{static} implementations of:
+    \begin{itemize}
+      \item \code{gpio_write()}
+      \item \code{gpio_read()}
+      \item \code{gpio_toggle()}
+      \item \code{gpio_enable_pci()}
+    \end{itemize}
+    \item Gives these concrete functions internal linkage.
+    \item Prevents other translation units from calling the implementations directly by name.
+    \item Allows the functions to remain reachable indirectly through the pointers stored in a
+      successfully initialized \code{gpio_t}.
+    \item Implements \code{gpio_init()}.
+    \item Validates the supplied Arduino pin number.
+    \item Returns \code{false} when the pin number is outside the supported range.
+    \item Performs validation before changing any hardware register.
+    \item Maps pins 0--7 to the \code{PORTD} register group.
+    \item Maps pins 8--13 to the \code{PORTB} register group.
+    \item Calculates the pin's hardware bit position.
+    \item Assigns the correct \code{DDRx}, \code{PORTx}, and \code{PINx} register pointers.
+    \item Assigns the appropriate pin-change mask register.
+    \item Assigns the correct pin-change interrupt group bit.
+    \item Configures the pin according to the requested \code{gpio_mode_t}.
+    \item Establishes the pin's initial output or pull-up state where required.
+    \item Assigns all four internal operation functions to the instance's function-pointer fields.
+    \item Leaves the caller-owned \code{gpio_t} ready for use after successful initialization.
+    \item Centralizes Arduino-pin-to-ATmega-register mapping in one implementation file.
+  \end{itemize}
+  \item \file{driver/eeprom.h}/\file{driver/eeprom.c}:
+  \begin{itemize}
+    \item Contains the EEPROM driver introduced in Chapter~\ref{c7:ch}.
+    \item Stores the current LED state in non-volatile memory.
+    \item Allows the application to restore the LED state after a reset or power cycle.
+    \item Is called only from normal program context.
+    \item Remains independent of the GPIO driver.
+    \item Does not need access to \code{gpio_t} or its function pointers.
+  \end{itemize}
+  \item \file{driver/serial.h}/\file{driver/serial.c}:
+  \begin{itemize}
+    \item Contains the UART driver introduced in Chapter~\ref{c6:ch}.
+    \item Initializes serial communication with the configured baud rate.
+    \item Reports whether the LED is currently on or off.
+    \item Performs output from the main loop rather than from an ISR.
+    \item Remains independent of the GPIO implementation.
+    \item Demonstrates composition of separate drivers at application level.
+  \end{itemize}
+  \item \file{driver/watchdog.h}/\file{driver/watchdog.c}:
+  \begin{itemize}
+    \item Contains the watchdog driver introduced in Chapter~\ref{c8:ch}.
+    \item Configures the watchdog during application startup.
+    \item Provides the operation used to reset the watchdog counter.
+    \item Is serviced once during every main-loop iteration.
+    \item Helps recover the system if the main loop stops executing normally.
+    \item Operates independently of the GPIO, EEPROM, and UART drivers.
+  \end{itemize}
+  \item \file{main.c}:
+  \begin{itemize}
+    \item Declares one caller-owned \code{gpio_t} instance for the LED on D9.
+    \item Declares one caller-owned \code{gpio_t} instance for the button on D13.
+    \item Initializes the watchdog first, then the GPIOs, the debounce timer and the UART.
+    \item Calls \code{gpio_init()} with two pin numbers known to be valid, so it doesn't check the
+      results; code that takes its pin numbers from elsewhere must.
+    \item Restores the previously saved LED state from EEPROM.
+    \item Applies the restored state to the LED.
+    \item Arms the button's pin-change interrupt through its \code{enable_pci()} function pointer.
+    \item Enables global interrupts only after initialization is complete.
+    \item Defines the shared event state used by the ISRs and main loop.
+    \item Implements \code{ISR(PCINT0_vect)}:
+    \begin{itemize}
+      \item Disables the button's pin-change interrupt.
+      \item Starts or resets the debounce timing state.
+      \item Toggles the LED through the GPIO driver's function pointer.
+      \item Sets an event flag.
+      \item Performs no EEPROM write.
+      \item Performs no UART output.
+    \end{itemize}
+    \item Implements \code{ISR(TIMER0_OVF_vect)}:
+    \begin{itemize}
+      \item Tracks the elapsed debounce interval.
+      \item Re-enables the button interrupt after approximately 300\,ms.
+      \item Stops or resets the debounce timing state when re-arming is complete.
+    \end{itemize}
+    \item Uses the timer interrupt only for debounce timing.
+    \item Resets the watchdog once per main-loop iteration.
+    \item Checks the event flag from normal program context.
+    \item Clears the event flag once the new state has been written to EEPROM.
+    \item Reads the LED's new state.
+    \item Writes the new state to EEPROM.
+    \item Reports the new state through UART.
+    \item Keeps potentially slow operations outside the interrupt service routines.
+    \item Coordinates several independent drivers without coupling their implementations together.
+  \end{itemize}
+\end{itemize}
+\file{driver/gpio.c} and \file{main.c} are the files printed above. The header, with its full
+comments:
+
+\cfile{lectures/L10/function_pointer_demo/include/driver/gpio.h}
+
+\noindent The serial, EEPROM and watchdog drivers are byte for byte the ones printed in
+\secref{c6:a:6}, \secref{c7:a:4} and \secref{c8:a:5}. The demo's \file{Makefile} is the one printed
+in \secref{c6:sec:build}, with the same three extra source files in its \code{SRC_FILES} as
+Chapter~\ref{c9:ch}'s demo (\secref{c9:a:5}).
+
+\subsection{Opaque structs}
+\label{c10:a:3}
+\begin{itemize}
+  \item Starting over from \secref{c9:a:2}/\secref{c9:a:3}'s \code{gpio_t}, not continuing from
+    \secref{c10:a:2}'s version above:
+  \begin{itemize}
+    \item Hiding fields and hiding functions are independent techniques, not two steps of one
+      pipeline, so \code{gpio_write()}/\code{gpio_read()}/\code{gpio_toggle()} go back to being
+      ordinary global functions instead of struct fields.
+    \item Same fields, same \code{gpio_write()}/\code{gpio_read()}/\code{gpio_toggle()}
+      signatures as Chapter~\ref{c9:ch}; \secref{c10:a:2}'s
+      \code{enable_pci}/\code{pcmskx}/\code{pcicrx} additions don't carry over either. This
+      section is about opacity, not interrupts.
+  \end{itemize}
+  \item What's new relative to Chapter~\ref{c9:ch}:
+  \begin{itemize}
+    \item The struct itself moves out of \file{gpio.h} and into \file{gpio.c}.
+    \item \code{gpio_init()} is replaced by a \code{malloc()}-based \code{gpio_create()}, since
+      callers can no longer declare their own \code{gpio_t} and pass its address once the struct's
+      size and layout aren't visible to them.
+  \end{itemize}
+\end{itemize}
+
+\noindent\file{gpio.h}, the only file calling code includes:
+
+\begin{ccode}
+/**
+ * @brief GPIO driver for ATmega328p.
+ */
+#ifndef DRIVER_GPIO_H_
+#define DRIVER_GPIO_H_
+
+#include <stdbool.h>
+#include <stdint.h>
+
+/**
+ * @brief Enumeration of GPIO modes.
+ */
+typedef enum
+{
+    GPIO_MODE_INPUT,        ///< Standard GPIO input.
+    GPIO_MODE_INPUT_PULLUP, ///< GPIO input with its internal pull-up enabled.
+    GPIO_MODE_OUTPUT,       ///< GPIO output.
+} gpio_mode_t;
+
+/**
+ * @brief GPIO driver structure.
+ */
+typedef struct gpio gpio_t;   // incomplete type: fields are not visible here
+
+/**
+ * @brief Allocate and configure a new GPIO.
+ *
+ * @param[in] ddrx  Pointer to the data direction register associated with the GPIO.
+ * @param[in] portx Pointer to the output register associated with the GPIO.
+ * @param[in] pinx  Pointer to the input register associated with the GPIO.
+ * @param[in] pin   Bit position of the GPIO pin within the associated port.
+ * @param[in] mode  GPIO mode.
+ *
+ * @return Pointer to the new GPIO, or NULL if allocation failed.
+ */
+gpio_t* gpio_create(volatile uint8_t* ddrx, volatile uint8_t* portx, volatile uint8_t* pinx,
+                     uint8_t pin, gpio_mode_t mode);
+
+/**
+ * @brief Set state of the given GPIO.
+ *
+ * @param[in] self  GPIO instance.
+ * @param[in] state GPIO state (true = high, false = low).
+ *
+ * @note This operation is only supported for GPIOs configured as outputs.
+ */
+void gpio_write(gpio_t* self, bool state);
+
+/**
+ * @brief Read state of the given GPIO.
+ *
+ * @param[in] self GPIO instance.
+ *
+ * @return GPIO state (true = high, false = low).
+ */
+bool gpio_read(const gpio_t* self);
+
+/**
+ * @brief Toggle state of the given GPIO.
+ *
+ * @param[in] self GPIO instance.
+ */
+void gpio_toggle(gpio_t* self);
+
+#endif /* DRIVER_GPIO_H_ */
+\end{ccode}
+
+\noindent\file{gpio.c}, the only file that ever sees \code{gpio_t}'s actual fields:
+
+\begin{ccode}
+#include <stddef.h>
+#include <stdlib.h>
+
+#include "driver/gpio.h"
+
+struct gpio
+{
+    volatile uint8_t* ddrx;
+    volatile uint8_t* portx;
+    volatile uint8_t* pinx;
+    uint8_t pin;
+};
+
+gpio_t* gpio_create(volatile uint8_t* ddrx, volatile uint8_t* portx, volatile uint8_t* pinx,
+                     const uint8_t pin, const gpio_mode_t mode)
+{
+    gpio_t* self = (gpio_t*)(malloc(sizeof(gpio_t)));
+    if (NULL == self) { return NULL; } // Allocation failed.
+
+    self->ddrx = ddrx;
+    self->portx = portx;
+    self->pinx = pinx;
+    self->pin = pin;
+
+    switch (mode)
+    {
+        case GPIO_MODE_INPUT_PULLUP:
+            *self->ddrx &= ~(1U << self->pin);
+            *self->portx |= (1U << self->pin);
+            break;
+        case GPIO_MODE_OUTPUT:
+            *self->ddrx |= (1U << self->pin);
+            *self->portx &= ~(1U << self->pin);
+            break;
+        default:
+            *self->ddrx &= ~(1U << self->pin);
+            *self->portx &= ~(1U << self->pin);
+            break;
+    }
+    return self;
+}
+
+void gpio_write(gpio_t* self, const bool state)
+{
+    if (NULL == self) { return; }
+    const bool output = (*self->ddrx & (1U << self->pin));
+    if (!output) { return; }
+
+    if (state) { *self->portx |= (1U << self->pin); }
+    else { *self->portx &= ~(1U << self->pin); }
+}
+
+bool gpio_read(const gpio_t* self)
+{
+    return (NULL != self) ? (*self->pinx & (1U << self->pin)) : false;
+}
+
+void gpio_toggle(gpio_t* self)
+{
+    if (NULL == self) { return; }
+    const bool output = (*self->ddrx & (1U << self->pin));
+    if (!output) { return; }
+    *self->pinx = (1U << self->pin);
+}
+\end{ccode}
+
+\begin{itemize}
+  \item \code{gpio_create()} calls \code{malloc()} once per instance rather than reserving a
+    fixed-size static array:
+  \begin{itemize}
+    \item A pool sized for the worst case, up to 14 possible Arduino pins, reserves that much RAM
+      on every board, even ones that only ever create two or three GPIOs; \code{malloc()} only
+      spends what a program actually asks for.
+    \item This isn't the ``avoid dynamic memory'' advice AVR programs usually follow, that's
+      really about avoiding \emph{repeated} allocation and \code{free()} churn at runtime.
+      \code{gpio_create()} is called once per driver instance, at startup, and the instance lives
+      for the rest of the program; there's no resizing or fragmentation risk to worry about here.
+    \item \code{gpio_create()} returning \code{NULL} on allocation failure is the caller's only
+      signal that the heap ran out, same as any other \code{malloc()} call.
+  \end{itemize}
+\end{itemize}
+
+\subsection{Function pointers}
+\label{c10:a:4}
+\begin{itemize}
+  \item \Secref{c1:a:8} covered the syntax: a variable that holds a function's address, callable
+    through the variable exactly like calling the function by name.
+  \item What's new here is storing one in a struct, which lets a driver call back into code it
+    knows nothing about.
+\end{itemize}
+Pairing one of \secref{c10:a:3}'s \code{gpio_t} inputs with a callback:
+
+\begin{ccode}
+/**
+ * @brief Button structure.
+ */
+typedef struct
+{
+    /** GPIO associated with the button. */
+    gpio_t* pin;
+
+    /**
+     * @brief Handle press events.
+     */
+    void (*on_press)(void); // Called from main(), not the ISR; see L06 Appendix A.6.
+} button_t;
+
+/**
+ * @brief Check for button press event, invoke its callback if one occurred.
+ *
+ * @param[in] self Button instance.
+ * @param[in] edge True if a press was just detected (e.g. from a flag an ISR set).
+ */
+static void button_check(const button_t* self, const bool edge)
+{
+    const bool valid = (NULL != self) && (NULL != self->on_press);
+    if (valid && edge) { self->on_press(); }
+}
+\end{ccode}
+
+\noindent\code{button_t}'s code never mentions what \code{on_press} actually does, toggle an LED,
+send a UART message, anything with a matching signature can be plugged in without touching
+\code{button_check()}.
+
+\subsection{Worked example: an interrupt-driven \code{gpio_t} with event flags}
+\label{c10:a:5}
+\begin{itemize}
+  \item \Secref{c10:a:4}'s \code{button_t} took an edge flag as a parameter, wherever it came from
+    was left unspecified. This demo wires the same idea into a real pin-change interrupt.
+  \item \Secref{c10:a:3}'s \code{gpio_t} gains:
+  \begin{itemize}
+    \item A \code{gpio_callback_t cb} field.
+    \item \code{pcmskx}/\code{pcicrx} (the port's pin-change mask register and its enable bit in
+      \code{PCICR}).
+    \item Three new functions that arm, flag, and dispatch the interrupt.
+  \end{itemize}
+\end{itemize}
+\code{gpio_enable_pci()} arms the interrupt for one GPIO:
+
+\begin{ccode}
+void gpio_enable_pci(gpio_t* self)
+{
+    if (NULL == self) { return; }
+    SET(PCICR, self->pcicrx);      // enable interrupts on the associated I/O port
+    SET(*self->pcmskx, self->pin); // enable interrupts on the pin
+    sei();                         // enable interrupts globally
+}
+\end{ccode}
+
+\begin{itemize}
+  \item Following \secref{c6:a:6}'s discipline, none of the three ISRs (one per I/O port) do
+    anything beyond flagging that \emph{something} happened.
+  \item \code{event_flags} is \code{volatile} because it's written from an ISR and read from
+    \code{main()}'s loop, the exact situation \code{volatile} exists for:
+\end{itemize}
+
+\begin{ccode}
+/** Event flags for each I/O port (set from an ISR, cleared once handled). */
+static volatile uint8_t event_flags = 0U;
+
+static inline void flag_event(const uint8_t port)
+{
+    if (PORT_COUNT > port) { SET(event_flags, port); }
+}
+
+ISR(PCINT0_vect) { flag_event(PORT_OFFSET_B); } // port B: pins 8-13
+ISR(PCINT1_vect) { flag_event(PORT_OFFSET_C); } // port C: pins 14-19
+ISR(PCINT2_vect) { flag_event(PORT_OFFSET_D); } // port D: pins 0-7
+\end{ccode}
+
+\noindent Deciding \emph{what} to do about a flagged event, and actually calling the callback,
+happens entirely outside the ISR, in code \code{main()}'s loop drives:
+
+\begin{ccode}
+bool gpio_event_occurred(const gpio_t* self)
+{
+    return NULL != self ? READ(event_flags, self->pcicrx) : false;
+}
+
+bool gpio_handle_event(gpio_t* self)
+{
+    bool handled = false;
+    if (gpio_event_occurred(self))
+    {
+        if (NULL != self->cb)
+        {
+            cli();
+            CLEAR(event_flags, self->pcicrx);
+            sei();
+
+            self->cb();
+            handled = true;
+        }
+    }
+    return handled;
+}
+\end{ccode}
+
+\noindent\code{CLEAR()} is a read-modify-write of \code{event_flags}, the same shape as the
+\code{PORTB ^=} toggle \secref{c3:a:3} warned about: read the byte, clear one bit, write the byte
+back. An ISR that flags another port between that read and that write would have its flag silently
+overwritten, so \code{gpio_handle_event()} clears the flag with interrupts disabled. And it clears
+it \emph{before} calling the callback, not after: an edge that arrives while the callback runs then
+sets the flag again and is handled on the next pass, instead of being wiped out along with the one
+just handled.
+
+\code{gpio_event_occurred()} reads \code{event_flags} by \code{pcicrx}
+(\code{PCIE0}/\code{PCIE1}/\code{PCIE2}), while the ISRs above flag it by
+\code{PORT_OFFSET_B}/\code{_C}/\code{_D} (\code{0}/\code{1}/\code{2}); these only line up because
+the ATmega328p happens to number \code{PCIE0}--\code{PCIE2} the same way. Worth noticing when
+reading unfamiliar register code: two differently-named constants lining up by coincidence of the
+datasheet, not by a shared definition.
+
+\begin{console}
+encapsulation_demo/
+├── Makefile
+├── main.c
+├── include/
+│   └── driver/
+│       ├── gpio.h
+│       └── utils.h
+└── source/
+    └── driver/
+        └── gpio.c
+\end{console}
+
+\begin{itemize}
+  \item \file{driver/gpio.h} and \file{driver/gpio.c}, printed at the end of this section, are the
+    full driver, including \code{gpio_new()}/\code{gpio_del()}, extended with the callback and
+    interrupt-handling pieces shown above.
+  \item \file{driver/utils.h}, printed there too, has the
+    \code{SET}/\code{CLEAR}/\code{TOGGLE}/\code{READ} register macros used throughout.
+\end{itemize}
+\file{main.c} configures pin 9 as an LED output and pin 13 as a button input with its pull-up
+enabled, registers \code{button_event()} as the button's callback, and lets pin-change interrupts
+drive it:
+
+\cfile{lectures/L10/encapsulation_demo/main.c}
+
+\noindent\code{button_event()} itself never runs inside an ISR, it only ever runs from
+\code{gpio_handle_event()}, called from \code{main()}'s loop; the ISRs above never touch
+\code{led1}, \code{btn1}, or the callback at all.
+
+Build and flash the same way as \secref{c9:a:5}: on Linux, run \code{make} in the demo's
+directory, \file{lectures/L10/encapsulation_demo} (\code{make flash} to program the board); on
+Windows via Microchip Studio, recreate this folder structure inside the project and add
+\file{include} as an include directory.
+
+\subsubsection{The encapsulation demo in full}
+The demo in \file{lectures/L10/encapsulation_demo} is interrupt-driven GPIO with event flags: an
+opaque \code{gpio_t} driver extended with a stored callback and pin-change interrupt support.
+
+This example demonstrates encapsulation (\code{gpio_t}'s fields are hidden behind
+\file{driver/gpio.h}) combined with a function pointer stored in a struct, dispatched safely from
+\code{main()}'s loop. The interrupt service routine only records that an event occurred;
+\code{gpio_handle_event()} is what actually invokes the callback.
+
+The implementation is written for compilation on an ATmega328P in Microchip Studio.
+
+\paragraph{Files}
+\begin{itemize}
+  \item \file{driver/gpio.h}:
+  \begin{itemize}
+    \item Contains the GPIO driver's public interface.
+    \item Forward-declares \code{gpio_t} without exposing the definition of \code{struct gpio}.
+    \item Keeps register pointers, pin numbers, callback pointers, and other internal state
+      private.
+    \item Defines the \code{gpio_mode_t} enum used to select the pin's operating mode.
+    \item Declares the lifetime-management functions:
+    \begin{itemize}
+      \item \code{gpio_new()}
+      \item \code{gpio_del()}
+    \end{itemize}
+    \item Declares the basic GPIO operations:
+    \begin{itemize}
+      \item \code{gpio_write()}
+      \item \code{gpio_read()}
+      \item \code{gpio_toggle()}
+    \end{itemize}
+    \item Declares the pin-change interrupt control functions:
+    \begin{itemize}
+      \item \code{gpio_enable_pci()}
+      \item \code{gpio_disable_pci()}
+    \end{itemize}
+    \item Declares the event-processing functions:
+    \begin{itemize}
+      \item \code{gpio_event_occurred()}
+      \item \code{gpio_handle_event()}
+    \end{itemize}
+    \item Provides the only interface that application code needs in order to use the driver.
+    \item Prevents application code from depending on the driver's internal representation.
+  \end{itemize}
+  \item \file{driver/gpio.c}:
+  \begin{itemize}
+    \item Defines the private \code{struct gpio}.
+    \item Stores the hardware information needed to operate each GPIO pin.
+    \item Stores the callback function associated with an interrupt-driven GPIO instance.
+    \item Implements allocation and initialization performed by \code{gpio_new()}.
+    \item Implements cleanup performed by \code{gpio_del()}.
+    \item Implements GPIO register access for reading, writing, and toggling pins.
+    \item Maps each GPIO pin to the appropriate ATmega328P I/O registers.
+    \item Configures the corresponding pin-change interrupt mask bit.
+    \item Enables or disables the appropriate pin-change interrupt group.
+    \item Maintains the shared event flags used to communicate with the main loop.
+    \item Implements \code{gpio_event_occurred()} for checking whether an event is pending.
+    \item Implements \code{gpio_handle_event()} for clearing the pending event and invoking the
+      stored callback.
+    \item Contains the pin-change interrupt handlers:
+    \begin{itemize}
+      \item \code{ISR(PCINT0_vect)}
+      \item \code{ISR(PCINT1_vect)}
+      \item \code{ISR(PCINT2_vect)}
+    \end{itemize}
+    \item Keeps the interrupt handlers intentionally small.
+    \item Records events in interrupt context without directly calling application code.
+    \item Centralizes all ATmega328P-specific GPIO and interrupt details inside the driver
+      implementation.
+  \end{itemize}
+  \item \file{driver/utils.h}:
+  \begin{itemize}
+    \item Contains function-like macros for common bit operations.
+    \item Provides macros for setting bits in a hardware register.
+    \item Provides macros for clearing bits in a hardware register.
+    \item Provides macros for toggling bits in a hardware register.
+    \item Provides macros for reading individual bits from a hardware register.
+    \item Makes low-level register operations more readable.
+    \item Reduces repetition in the GPIO driver implementation.
+  \end{itemize}
+  \item \file{main.c}:
+  \begin{itemize}
+    \item Demonstrates how application code uses the GPIO driver without accessing its internal
+      fields.
+    \item Creates one GPIO instance for an LED.
+    \item Creates another GPIO instance for a push button.
+    \item Configures the LED pin as an output.
+    \item Configures the button pin as an input.
+    \item Registers a callback for the button GPIO.
+    \item Enables the button's pin-change interrupt.
+    \item Enables global interrupts through \code{gpio_enable_pci()}, once both GPIOs are
+      initialized.
+    \item Polls for pending GPIO events in the main loop.
+    \item Calls \code{gpio_handle_event()} from normal program context.
+    \item Toggles the LED from the registered callback when the button event is handled.
+    \item Demonstrates deferred interrupt processing rather than executing the complete response
+      inside the ISR.
+    \item Releases the GPIO objects through the driver's public interface when cleanup is
+      required.
+  \end{itemize}
+\end{itemize}
+\file{main.c} is the file printed above. The driver:
+
+\cfile{lectures/L10/encapsulation_demo/include/driver/gpio.h}
+\needspace{8\baselineskip}
+\cfile{lectures/L10/encapsulation_demo/include/driver/utils.h}
+\needspace{8\baselineskip}
+\cfile{lectures/L10/encapsulation_demo/source/driver/gpio.c}
+
+\noindent The demo's \file{Makefile} is the one printed in \secref{c6:sec:build}, with
+\file{source/driver/gpio.c} in place of \file{source/driver/serial.c} in its \code{SRC_FILES}:
+this demo has no serial driver.
+
+\subsection{Vtables: a \code{gpio_interface_t} interface}
+\label{c10:a:6}
+\begin{itemize}
+  \item \Secref{c10:a:3}'s \code{gpio_t} hardcodes real ATmega328P registers into every instance:
+  \begin{itemize}
+    \item There's no way to run code that uses it without a chip attached.
+    \item There's no way to substitute a fake GPIO for host-side testing.
+  \end{itemize}
+  \item The fix is a struct of function pointers, an \textbf{interface}, with each concrete
+    implementation, real hardware, or an in-memory stub, providing its own vtable:
+\end{itemize}
+
+\begin{ccode}
+/** GPIO interface. */
+typedef struct gpio_interface gpio_interface_t;
+
+/**
+ * @brief GPIO virtual table.
+ */
+typedef struct gpio_vtable
+{
+    void (*del)(gpio_interface_t** self);
+    bool (*read)(const gpio_interface_t* self);
+    void (*write)(gpio_interface_t* self, bool value);
+    void (*toggle)(gpio_interface_t* self);
+} gpio_vtable_t;
+
+/**
+ * @brief GPIO interface.
+ */
+typedef struct gpio_interface
+{
+    const gpio_vtable_t* vptr;   // pointer to the concrete implementation's vtable
+} gpio_interface_t;
+\end{ccode}
+
+\noindent Unlike \secref{c10:a:3}/\secref{c10:a:4}'s \code{gpio_t}, \code{gpio_interface_t} has no
+register pointers, no pin, nothing hardware-specific at all, just a pointer to a table of
+functions. Every operation goes through it: \code{self->vptr->toggle(self)} instead of
+\code{gpio_toggle(self)}.
+
+A concrete type implements the interface by embedding \code{gpio_interface_t} as its \emph{first}
+field:
+
+\begin{ccode}
+typedef struct gpio_impl
+{
+    gpio_interface_t itf;   // must be first: makes gpio_impl_t* safely reinterpretable as
+                             // gpio_interface_t*
+    volatile uint8_t* ddrx;
+    volatile uint8_t* portx;
+    volatile uint8_t* pinx;
+    uint8_t pin;
+    uint8_t id;
+} gpio_impl_t;
+\end{ccode}
+
+\begin{itemize}
+  \item Because \code{itf} is the struct's first member, C guarantees a \code{gpio_impl_t*} and a
+    pointer to its first field share the same address, so a \code{gpio_impl_t*} can be cast to
+    \code{gpio_interface_t*} and back without adjusting the pointer.
+  \item That's the entire trick a C++ compiler automates for single inheritance: an object's
+    address \emph{is} its base class's address, and \code{self->vptr} is exactly the hidden vtable
+    pointer every polymorphic C++ object carries.
+\end{itemize}
+Each vtable function casts back to the concrete type, then operates on its own fields exactly like
+\secref{c10:a:3}'s \code{gpio_write()}/\code{gpio_toggle()} did:
+
+\begin{ccode}
+static inline gpio_impl_t* get_impl(gpio_interface_t* self) { return (gpio_impl_t*)(self); }
+
+static void gpio_toggle(gpio_interface_t* self)
+{
+    gpio_impl_t* impl = get_impl(self);
+    if ((NULL == impl) || !gpio_impl_is_output(impl)) { return; }
+    *(impl->pinx) = (1U << impl->pin); // Writing a 1 to PINx toggles PORTx.
+}
+
+static const gpio_vtable_t* gpio_vptr_get_instance(void)
+{
+    static const gpio_vtable_t vtable = {
+        .del = gpio_del, .read = gpio_read, .write = gpio_write, .toggle = gpio_toggle,
+    };
+    return &vtable;   // one shared vtable; every instance's itf.vptr points at this same address
+}
+
+gpio_interface_t* gpio_atmega328p_new(const uint8_t pin, const gpio_mode_t mode)
+{
+    gpio_impl_t* impl = (gpio_impl_t*)(malloc(sizeof(gpio_impl_t)));
+    if (NULL == impl) { return NULL; }
+    // ... configure impl->ddrx/portx/pinx/pin from pin, same mapping A.2's gpio_init() did ...
+    impl->itf.vptr = gpio_vptr_get_instance();
+    return (gpio_interface_t*)(impl);
+}
+\end{ccode}
+
+\begin{itemize}
+  \item Like \secref{c10:a:3}'s \code{gpio_create()}, \code{gpio_atmega328p_new()} calls
+    \code{malloc()}, one instance per call, never resized, never repeatedly allocated:
+  \begin{itemize}
+    \item What's actually new here isn't the allocation strategy, it's what can sit behind the
+      pointer: \code{gpio_interface_t*} can point at a \code{gpio_impl_t} or a
+      \code{gpio_stub_t}, two differently-sized concrete structs. \Secref{c10:a:3} only ever had
+      one struct shape (\code{struct gpio}) to allocate.
+  \end{itemize}
+  \item \code{del()} takes \code{gpio_interface_t**} rather than \code{gpio_interface_t*}:
+  \begin{itemize}
+    \item It can \code{free()} the instance and null out the caller's own pointer in one call,
+      guarding against a second \code{del()} or a use-after-free through that same variable.
+    \item That's a different defense than Exercise~\ref{c9:ex:3} considered for
+      \code{gpio_free()} (whether the freed instance's \emph{own} fields should be reset), but the
+      same underlying worry: a pointer to a GPIO that no longer safely means what it used to.
+  \end{itemize}
+\end{itemize}
+A second implementation, \code{gpio_stub_t}, satisfies the exact same interface without touching
+any hardware, a \code{bool state} field stands in for the registers:
+
+\begin{ccode}
+typedef struct gpio_stub
+{
+    gpio_interface_t itf;   // still first
+    bool state;
+} gpio_stub_t;
+
+static bool gpio_read(const gpio_interface_t* self)
+{
+    const gpio_stub_t* impl = (const gpio_stub_t*)(self);
+    return NULL != impl ? impl->state : false;
+}
+\end{ccode}
+
+\noindent Calling code never knows the difference: anything holding a \code{gpio_interface_t*} can
+call \code{self->vptr->read(self)}, whether \code{self} came from \code{gpio_atmega328p_new()} or
+\code{gpio_stub_new()}.
+
+This is the same mechanism higher-level languages build \code{virtual} functions on top of: an
+object with virtual methods carries a hidden pointer to a table of function addresses (its vtable),
+and calling a virtual method is, under the hood, exactly the \code{self->vptr->toggle(...)} pattern
+above, just generated by the compiler instead of written out by hand.
+
+\begin{console}
+interface_demo/
+├── Makefile
+├── main.c
+├── include/
+│   └── driver/
+│       └── gpio/
+│           ├── atmega328p.h
+│           ├── interface.h
+│           └── stub.h
+└── source/
+    └── driver/
+        └── gpio/
+            ├── atmega328p.c
+            └── stub.c
+\end{console}
+
+\begin{itemize}
+  \item \file{driver/gpio/interface.h} is the full interface shown above.
+  \item \file{driver/gpio/atmega328p.h}/\file{.c} and \file{driver/gpio/stub.h}/\file{.c} are the
+    two implementations in full, all printed at the end of this section.
+  \begin{itemize}
+    \item Including the pin-registry reservation \code{gpio_atmega328p_new()} uses: the same idea
+      as Exercise~\ref{c9:ex:5}'s \code{pin_reg}, just widened from a \code{uint16_t} covering pins
+      0--13 to a \code{uint32_t} covering pins 0--19, since this demo's pin mapping also reaches
+      \code{PORTC}.
+  \end{itemize}
+\end{itemize}
+\file{main.c} toggles a real LED on D8 whenever a \emph{simulated} button, a \code{gpio_stub_t}
+whose state flips every 60,000 main-loop iterations instead of being wired to real hardware,
+reports a rising edge. Both constructors can fail, the ATmega328P one also when its pin is already
+taken, so \code{main()} checks each result before using it:
+
+\cfile{lectures/L10/interface_demo/main.c}
+
+\noindent Neither \code{simulate_btn_event()} nor \code{main()}'s edge-detection logic cares that
+\code{led1} is real hardware and \code{btn1} isn't: both are just \code{gpio_interface_t*}. Swap
+\code{gpio_stub_new()} for a second \code{gpio_atmega328p_new()} call and a real button, and
+nothing else in this file changes.
+
+Build and flash the same way as \secref{c9:a:5}: on Linux, run \code{make} in the demo's
+directory, \file{lectures/L10/interface_demo} (\code{make flash} to program the board); on Windows
+via Microchip Studio, recreate this folder structure inside the project and add \file{include} as
+an include directory.
+
+\subsubsection{The interface demo in full}
+The demo in \file{lectures/L10/interface_demo} is about interfaces and vtables in C: a hand-written
+interface (\code{gpio_interface_t}) backed by two independent concrete GPIO implementations ---
+real ATmega328P hardware and an in-memory stub --- that satisfy the same contract and can be used
+interchangeably.
+
+This example demonstrates, in simplified form, how C++ commonly implements \code{virtual} functions
+and single inheritance under the hood. The interface object contains only a pointer to a table of
+function pointers. Each concrete type embeds that interface object as its first field, allowing a
+pointer to the concrete object to be used as a pointer to the interface without changing its
+address.
+
+Calling code holds only a \code{gpio_interface_t*} and dispatches operations through
+\code{self->vptr->...}. It does not know whether the object controls a physical ATmega328P pin or
+stores its state entirely in memory.
+
+The implementation is written for compilation on an ATmega328P in Microchip Studio.
+
+\paragraph{Files}
+\begin{itemize}
+  \item \file{driver/gpio/interface.h}:
+  \begin{itemize}
+    \item Contains the implementation-independent GPIO contract.
+    \item Defines \code{gpio_mode_t}.
+    \item Defines \code{gpio_vtable_t}.
+    \item Declares the complete set of operations that a concrete GPIO implementation must
+      provide:
+    \begin{itemize}
+      \item \code{del()}
+      \item \code{read()}
+      \item \code{write()}
+      \item \code{toggle()}
+    \end{itemize}
+    \item Defines the signatures of all GPIO operation pointers.
+    \item Uses \code{gpio_interface_t*} as the common \code{self} parameter type.
+    \item Defines \code{gpio_interface_t}.
+    \item Stores only \code{const gpio_vtable_t* vptr} in the interface object.
+    \item Contains no ATmega328P register pointers.
+    \item Contains no pin number or hardware-specific state.
+    \item Contains no stub-specific state.
+    \item Allows calling code to dispatch operations without knowing the concrete object layout.
+    \item Is the only GPIO header required by code that receives an already-created interface
+      object.
+    \item Serves a role similar to an abstract base class in C++.
+    \item Describes behavior without selecting an implementation.
+    \item Allows additional GPIO implementations to be added without changing the
+      interface-using logic.
+  \end{itemize}
+  \item \file{driver/gpio/atmega328p.h}/\file{driver/gpio/atmega328p.c}:
+  \begin{itemize}
+    \item Declare and define \code{gpio_atmega328p_new(uint8_t pin, gpio_mode_t mode)}.
+    \item Provide the concrete implementation backed by real ATmega328P GPIO registers.
+    \item Return a \code{gpio_interface_t*} rather than exposing the private concrete type.
+    \item Keep \code{gpio_impl_t} private to \file{atmega328p.c}.
+    \item Define \code{gpio_impl_t} with \code{gpio_interface_t} as its first field.
+    \item Extend the embedded interface with hardware-specific state:
+    \begin{itemize}
+      \item \code{ddrx}
+      \item \code{portx}
+      \item \code{pinx}
+      \item \code{pin}
+      \item \code{id}
+    \end{itemize}
+    \item Store register pointers for the selected hardware port.
+    \item Store the bit position used within those registers.
+    \item Store an identifier used to release the pin from the registry.
+    \item Define a \code{static const gpio_vtable_t} for the ATmega328P implementation.
+    \item Assign the ATmega328P vtable to the embedded interface during construction.
+    \item Implement private concrete operations for:
+    \begin{itemize}
+      \item Reading a hardware pin.
+      \item Writing a hardware pin.
+      \item Toggling a hardware pin.
+      \item Deleting the hardware-backed object.
+    \end{itemize}
+    \item Convert the incoming interface pointer back to \code{gpio_impl_t*} inside each concrete
+      operation.
+    \item Validate the supplied Arduino pin number.
+    \item Map the pin number to \code{PORTB}, \code{PORTC}, or \code{PORTD}.
+    \item Select the corresponding \code{DDRx} and \code{PINx} registers.
+    \item Calculate the bit position within the selected port.
+    \item Configure the pin according to the requested \code{gpio_mode_t}.
+    \item Allocate one private \code{gpio_impl_t} object with \code{malloc()}.
+    \item Return \code{NULL} if allocation fails.
+    \item Maintain a pin registry representing currently owned physical pins.
+    \item Check the registry before claiming a pin.
+    \item Return \code{NULL} if another live object already owns the requested pin.
+    \item Mark the pin as reserved after successful validation and allocation.
+    \item Prevent conflicting GPIO instances from silently modifying the same hardware.
+    \item Implement concrete deletion through the interface:
+    \begin{itemize}
+      \item Validate the supplied pointer.
+      \item Recover the concrete \code{gpio_impl_t}.
+      \item Reset the pin's data-direction and output state.
+      \item Release the pin from \code{pin_registry}.
+      \item Free the concrete allocation.
+      \item Set the caller's interface pointer to \code{NULL}.
+    \end{itemize}
+    \item Keep register mapping, reservation, and cleanup details hidden from interface-using
+      code.
+  \end{itemize}
+  \item \file{driver/gpio/stub.h}/\file{driver/gpio/stub.c}:
+  \begin{itemize}
+    \item Declare and define \code{gpio_stub_new(void)}.
+    \item Provide a concrete implementation backed only by memory.
+    \item Return the same public type, \code{gpio_interface_t*}, as the hardware constructor.
+    \item Keep \code{gpio_stub_t} private to \file{stub.c}.
+    \item Define \code{gpio_stub_t} with \code{gpio_interface_t} as its first field.
+    \item Extend the embedded interface with a \code{bool state}.
+    \item Define a separate \code{static const gpio_vtable_t} for the stub implementation.
+    \item Assign the stub vtable during construction.
+    \item Allocate one \code{gpio_stub_t} object with \code{malloc()}.
+    \item Initialize its logical state.
+    \item Return \code{NULL} if allocation fails.
+    \item Implement \code{write()} by assigning the in-memory state.
+    \item Implement \code{read()} by returning the in-memory state.
+    \item Implement \code{toggle()} by inverting the state.
+    \item Implement \code{del()} by freeing the stub allocation and nulling the caller's pointer.
+    \item Perform no hardware register access.
+    \item Require no ATmega328P GPIO pin.
+    \item Require no external wiring.
+    \item Satisfy the same behavioral contract as the real GPIO implementation.
+    \item Allow higher-level logic to be exercised in a deterministic software-only environment.
+  \end{itemize}
+  \item \file{main.c}:
+  \begin{itemize}
+    \item Uses \code{gpio_interface_t*} for both GPIO objects.
+    \item Creates one real LED with \code{gpio_atmega328p_new()}.
+    \item Assigns the LED to Arduino digital pin D8.
+    \item Configures the LED pin as an output.
+    \item Creates one simulated button with \code{gpio_stub_new()}.
+    \item Checks both constructor results before using the returned objects.
+    \item Does not access the private fields of either concrete implementation.
+    \item Does not need to know the size of either concrete struct.
+    \item Calls every GPIO operation through \code{self->vptr}.
+    \item Implements \code{simulate_btn_event()}.
+    \item Toggles the stub button after approximately every 60,000 main-loop iterations.
+    \item Uses the simulated change in state as a substitute for a physical button press.
+    \item Stores the previous button state.
+    \item Reads the current button state through the interface.
+    \item Detects a rising edge when:
+    \begin{itemize}
+      \item The previous state was low.
+      \item The current state is high.
+    \end{itemize}
+    \item Toggles the physical LED when a rising edge is detected.
+    \item Performs both the button read and LED toggle through the same interface contract.
+    \item Demonstrates one application simultaneously using two different concrete
+      implementations.
+    \item Contains no special branch for distinguishing the real object from the stub object.
+    \item Demonstrates that dynamic dispatch is determined by each object's vtable.
+    \item Deletes both objects through their interface-provided \code{del()} operations.
+    \item Leaves implementation-specific cleanup to the concrete types.
+    \item Demonstrates hardware-independent application logic built on top of a C interface.
+  \end{itemize}
+\end{itemize}
+\file{main.c} is the file printed above. The interface and its two implementations:
+
+\cfile{lectures/L10/interface_demo/include/driver/gpio/interface.h}
+\needspace{8\baselineskip}
+\cfile{lectures/L10/interface_demo/include/driver/gpio/atmega328p.h}
+\needspace{8\baselineskip}
+\cfile{lectures/L10/interface_demo/source/driver/gpio/atmega328p.c}
+\needspace{8\baselineskip}
+\cfile{lectures/L10/interface_demo/include/driver/gpio/stub.h}
+\needspace{8\baselineskip}
+\cfile{lectures/L10/interface_demo/source/driver/gpio/stub.c}
+
+\noindent The demo's \file{Makefile} is the one printed in \secref{c6:sec:build}, with
+\file{source/driver/gpio/atmega328p.c} and \file{source/driver/gpio/stub.c} in place of
+\file{source/driver/serial.c} in its \code{SRC_FILES}: this demo has no serial driver either.

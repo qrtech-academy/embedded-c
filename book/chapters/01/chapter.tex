@@ -1,0 +1,44 @@
+% Chapter 1, typeset from lectures/L01: the README is the opener and the closing review, and
+% Appendix A is a section, with the same subsections; the exercises of Appendix B close the
+% chapter.
+
+\chapter{C Fundamentals}
+\label{c1:ch}
+
+{\large\itshape Enough C that from the next chapter on, only the hardware is new.\par}
+
+\begin{chapterbox}{In this chapter}
+\begin{itemize}
+  \item Program structure, compiling, and data types: a fast pass over what's the same as languages
+    you already know.
+  \item Structs, enums, and typedefs: grouping data, naming states, and the \code{self}-pointer
+    convention used throughout this book.
+  \item Functions, \code{static}, and header guards: how a \code{.c}/\code{.h} pair is organized in
+    this codebase.
+  \item Pointers: out-parameters, arrays/strings, and the pointer-to-pointer idiom for replacing a
+    caller's pointer.
+  \item Dynamic memory allocation (\code{malloc}/\code{realloc}/\code{free}), and why embedded C
+    mostly avoids it.
+  \item Worked example: pulling all of the above together in one small program.
+\end{itemize}
+\end{chapterbox}
+
+This chapter is a refresher on C for programmers who already know another language. Its aim is that
+you are comfortable enough with C's core syntax (types, structs, functions, pointers) not to be
+fighting the language once hardware programming starts in the next chapter. After it, you should be
+able to define and use a \code{struct}, an \code{enum} and a \code{typedef}, and explain why
+\code{self} is passed as a pointer; write a \code{.c}/\code{.h} pair with a correct header guard
+and a sensible static/public ordering; tell when a function parameter needs a single pointer
+(\code{int*}) and when a double pointer (\code{int**}); and use
+\code{malloc}/\code{realloc}/\code{free} correctly, including why a pointer should be nulled
+immediately after \code{free}.
+
+Read \secref{c1:sec:fundamentals} first: it is the chapter's core material, and its pointer
+subsection is the one to read slowly. Then work through the exercises in \secref{c1:sec:exercises}.
+They are programs for your own computer, not yet for the board, and all of them are Code exercises,
+with no printed solution; the questions some of them ask about the design they make you write are
+answered in Appendix~\ref{app:answers}.
+
+\input{chapters/01/fundamentals}
+\input{chapters/01/summary}
+\input{chapters/01/exercises}

@@ -1,0 +1,39 @@
+% Section 1.2, from lectures/L01/README.md: the goals, the evaluation questions, and the next
+% lecture.
+
+\needspace{10\baselineskip}
+\section{Review}
+\label{c1:sec:review}
+
+\subsection*{What you should be able to do now}
+After this chapter, you should:
+\begin{itemize}
+  \item Be comfortable enough with C's core syntax (types, structs, functions, pointers) to not be
+    fighting the language once hardware programming starts in the next chapter.
+  \item Be able to define and use a \code{struct}, \code{enum}, and \code{typedef}, and explain why
+    \code{self} is passed as a pointer.
+  \item Be able to write a \code{.c}/\code{.h} pair with a correct header guard and a sensible
+    static/public ordering.
+  \item Understand the difference between a single pointer (\code{int*}) and a double pointer
+    (\code{int**}) as a function parameter, and when each is needed.
+  \item Be able to use \code{malloc}/\code{realloc}/\code{free} correctly, including why a pointer
+    should be nulled immediately after \code{free}.
+\end{itemize}
+
+\needspace{6\baselineskip}
+\subsection*{Questions to test yourself}
+You should be able to explain:
+\begin{enumerate}
+  \item Why is \code{self} passed as a pointer rather than by value in this codebase's struct
+    functions?
+  \item What's the difference between a single pointer (\code{int*}) and a double pointer
+    (\code{int**}) as a function parameter, and when do you need the second?
+  \item Why must you capture \code{realloc}'s return value in a temporary before overwriting your
+    original pointer?
+  \item Why should you set a pointer to \code{0}/\code{NULL} immediately after \code{free}?
+\end{enumerate}
+
+\needspace{6\baselineskip}
+\subsection*{Looking ahead}
+Chapter~\ref{c2:ch} is about hardware-near programming in C: registers, bitwise I/O, and
+driving/reading pins on the ATmega328P.

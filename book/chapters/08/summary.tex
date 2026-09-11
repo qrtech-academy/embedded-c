@@ -1,0 +1,27 @@
+% Section 8.2, from lectures/L08/README.md: the goal, the evaluation question, and the next
+% lecture. The README's note on simulating the watchdog is in the chapter's opener.
+
+\needspace{12\baselineskip}
+\section{Review}
+\label{c8:sec:review}
+
+\needspace{6\baselineskip}
+\subsection*{What you should be able to do now}
+After this chapter, you should be able to:
+\begin{itemize}
+  \item Explain what the watchdog timer protects against, and enable it, reset it, and observe
+    what happens when it isn't reset in time.
+\end{itemize}
+
+\needspace{6\baselineskip}
+\subsection*{Questions to test yourself}
+\begin{enumerate}
+  \item What is the watchdog timer for, and what's the practical difference between a program that
+    resets it every loop iteration and one that never resets it at all?
+\end{enumerate}
+
+\needspace{6\baselineskip}
+\subsection*{Looking ahead}
+Now that EEPROM and the watchdog have shown what plain functions look like for a peripheral with
+exactly one instance, Chapter~\ref{c9:ch} covers what changes once a program needs several
+instances of the same kind of peripheral: structs as drivers.

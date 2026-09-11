@@ -1,0 +1,105 @@
+% Section 1.3, from lectures/L01/appendix/b_exercises.md.
+
+\section{Exercises}
+\label{c1:sec:exercises}\label{c1:app:b}
+
+\begin{aside}
+\textbf{How to work these.} Every exercise in this chapter is a Code exercise, and every one is a
+program for your own computer, not for the board: they practise the C of
+\secref{c1:sec:fundamentals} before any hardware is involved. Build and run them with the PC's own
+compiler, for example \code{gcc -std=c11 -Wall -Wextra -o main main.c} and then \code{./main}; the
+board and its toolchain arrive in Chapter~\ref{c2:ch}. While you test Exercises~\ref{c1:ex:8}
+and~\ref{c1:ex:9}, add \code{-fsanitize=address}, as the tip after the last exercise explains.
+
+\textbf{How to check your work.} The Code exercises have no printed solution: the program's output
+tells you whether it does what the exercise describes. The questions some of them ask about their
+design, such as why Exercise~\ref{c1:ex:7} needs a double pointer, are answered in
+Appendix~\ref{app:answers}. Try each exercise before you read its answer.
+\end{aside}
+
+% ------------------------------------------------------------------------------------------
+\exerciseset{Structs, enums, and typedefs}
+\label{c1:set:1}
+
+\codeexercise{A temperature reading}
+\label{c1:ex:1}
+Define a \code{struct} named \code{temp_reading} with fields \code{adc_value}
+(\code{unsigned int}), \code{voltage_v} (\code{double}), and \code{temperature_c} (\code{double}).
+Write a \code{static} function \code{temp_reading_init()} that takes a pointer to a
+\code{temp_reading} (named \code{self}, per the convention in \secref{c1:a:3}) plus an ADC value,
+and stores it along with the voltage and temperature derived from it (you don't need the real
+TMP36 formula yet; a placeholder conversion is fine, the real one comes with Chapter~6's
+temperature capstone, Exercise~\ref{c6:ex:5}).
+
+\codeexercise{A typedef for the reading}
+\label{c1:ex:2}
+Turn \code{struct temp_reading} into a \code{typedef}, \code{temp_reading_t}, following the
+\code{_t} convention from \secref{c1:a:3}.
+
+\codeexercise{An enum of states}
+\label{c1:ex:3}
+Define a \code{typedef enum} named \code{state_t} with five states: \code{STATE_OFF},
+\code{STATE_SLOW}, \code{STATE_MEDIUM}, \code{STATE_FAST}, \code{STATE_ON}. Write a \code{switch}
+over a \code{state_t} variable that prints a message for each state, then remove one \code{case}
+and see whether your compiler warns about the missing case (try building with \code{-Wswitch} if it
+doesn't by default). \textbf{Stretch:} write a function \code{state_next()} that returns the next
+state, wrapping from \code{STATE_ON} back to \code{STATE_OFF}; the core of the state machine you'll
+build in Chapter~3's last exercise, Exercise~\ref{c3:ex:8}.
+
+% ------------------------------------------------------------------------------------------
+\exerciseset{Functions and header guards}
+\label{c1:set:2}
+
+\codeexercise{A header and source pair}
+\label{c1:ex:4}
+Split \code{temp_reading_init()} from Exercise~\ref{c1:ex:1} into a
+\file{temp_reading.h}/\file{temp_reading.c} pair: declare the struct and prototype in the header,
+define the function in the source file, and add a proper header guard.
+
+\codeexercise{A private helper}
+\label{c1:ex:5}
+Add one \code{static} helper function to \file{temp_reading.c} that isn't declared in
+\file{temp_reading.h}. For example, one that converts an ADC value to a voltage. Following the
+ordering convention from \secref{c1:a:6}, where should its forward declaration go, and where should
+its definition go?
+
+% ------------------------------------------------------------------------------------------
+\exerciseset{Pointers}
+\label{c1:set:3}
+
+\codeexercise{Swap through pointers}
+\label{c1:ex:6}
+Write a function \code{swap()} that takes two \code{int*} parameters and swaps the values they
+point to. Call it from \code{main()} on two local variables and print both before and after.
+
+\codeexercise{Reset and delete a reading}
+\label{c1:ex:7}
+Write a function \code{temp_reading_reset()} taking a \code{temp_reading_t*} that resets all fields
+to zero. Call it from \code{main()} and verify that the caller's struct changes.
+
+Then write a function \code{temp_reading_delete()} that takes a \code{temp_reading_t**}, a pointer
+to a pointer, per \secref{c1:a:7} and \secref{c1:a:11}, and sets the caller's pointer to
+\code{NULL}. Why does this need a double pointer instead of a single \code{temp_reading_t*}?
+
+% ------------------------------------------------------------------------------------------
+\exerciseset{Dynamic memory allocation}
+\label{c1:set:4}
+
+\codeexercise{An array of readings}
+\label{c1:ex:8}
+Write a function \code{temp_reading_array_new(size_t count)} that \code{malloc()}s an array of
+\code{count} \code{temp_reading_t} structs and returns a pointer to it (or \code{NULL} on failure).
+Pair it with \code{temp_reading_array_delete()}, taking a \code{temp_reading_t**}, that frees the
+array and nulls the caller's pointer.
+
+\codeexercise{Resizing the array}
+\label{c1:ex:9}
+Extend the pair from Exercise~\ref{c1:ex:8} with \code{temp_reading_array_resize()}, using
+\code{realloc()}, following the pattern in \secref{c1:a:11}. Make sure it behaves correctly when
+resizing down to zero elements. This is the shape you'd reach for to keep a rolling history of the
+last few readings, like the five-reading average in Chapter~6's temperature capstone
+(Exercise~\ref{c6:ex:5}).
+
+\note[Tip] compile with \code{-fsanitize=address} (GCC/Clang) while testing
+Exercises~\ref{c1:ex:8} and~\ref{c1:ex:9}; it catches use-after-free and leaks immediately, which
+are easy to introduce by hand here.

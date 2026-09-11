@@ -1,0 +1,42 @@
+% Chapter 9, typeset from lectures/L09: the README is the opener and the closing review, the
+% lecture's Appendix A is a section with the same subsections, and its Appendix B, the exercises,
+% closes the chapter. The gpio_driver_demo is typeset straight from its files in §9.1.5.
+
+\chapter{Structs as Drivers}
+\label{c9:ch}
+
+{\large\itshape One struct per instance, and one set of functions for all of them.\par}
+
+\begin{chapterbox}{In this chapter}
+\begin{itemize}
+  \item Why Chapter~\ref{c4:ch}'s ADC and Chapters~\ref{c6:ch}--\ref{c8:ch}'s
+    UART/EEPROM/watchdog functions got away with no struct (they're singletons), and why
+    per-instance macros and globals stop scaling for everything else: revisiting
+    Chapter~\ref{c4:ch}'s multi-LED exercise.
+  \item Bundling a peripheral's state into a struct, and writing ``methods'' as functions that
+    take a pointer to that struct as their first argument.
+  \item Building a GPIO (\code{gpio_t}) driver, split into a header and a source file.
+  \item Worked example: rebuilding Chapter~\ref{c8:ch}'s watchdog demo on \code{gpio_t}, adding
+    pin-change-interrupt support to the GPIO driver along the way.
+  \item Exercise: a complete \code{timer_t} driver, with its own header/source split and a
+    callback, built the same way as \code{gpio_t}.
+\end{itemize}
+\end{chapterbox}
+
+Every driver so far has served exactly one of something: one ADC, one UART, one EEPROM, one
+watchdog, and LEDs and buttons hardcoded into macros one pin at a time. This chapter is about what
+to do when a program needs several of the same thing. After it you should be able to explain why
+hardcoded per-instance functions or macros break down once a program needs more than one of
+something, design a struct that bundles a peripheral's configuration and state, write ``methods''
+as plain functions taking a pointer to that struct as their first parameter (the \code{self}
+convention), and refactor a program built on duplicated globals into one built on an array of
+struct instances.
+
+Read \secref{c9:sec:structs}, the substance of the chapter, in order: it builds a GPIO driver one
+step at a time and ends with Chapter~\ref{c8:ch}'s demo rebuilt on it. Then work the exercises in
+\secref{c9:sec:exercises}. The Reflection exercises, and the design questions the Code exercises
+ask, are answered in Appendix~\ref{app:answers}; the Code exercises have no printed solution.
+
+\input{chapters/09/structs}
+\input{chapters/09/summary}
+\input{chapters/09/exercises}

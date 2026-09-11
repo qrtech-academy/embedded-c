@@ -1,0 +1,33 @@
+% Chapter 4, typeset from lectures/L04: the README is the opener and the closing review, the
+% lecture's Appendix A is the chapter's one section of material, and Appendix B its exercises.
+
+\chapter{Analog-to-Digital Conversion}
+\label{c4:ch}
+
+{\large\itshape Reading a voltage as a number, and turning a number back into brightness.\par}
+
+\begin{chapterbox}{In this chapter}
+\begin{itemize}
+  \item Why ADC: reading continuous voltages instead of a simple high/low.
+  \item The 10-bit ADC on the ATmega328P and the linear scaling formula.
+  \item Registers: \code{ADMUX}, \code{ADCSRA}, and the combined \code{ADC} result register.
+  \item A reusable \code{adc_read()} function.
+  \item Worked example: potentiometer-controlled LED brightness via software PWM.
+\end{itemize}
+\end{chapterbox}
+
+Until now every input has been a pin that is high or low. This chapter is about the
+analog-to-digital converter: what an ADC does, and why its result is a discrete number, not a
+continuous value. You will compute the voltage a given ADC reading corresponds to, and vice versa;
+configure and read from a chosen ADC channel; and see why the ADC needs its own clock prescaler,
+separate from the CPU clock.
+
+Read \secref{c4:sec:adc} first: it is the chapter's core material, and it ends with a worked
+example that combines the ADC with the Pin Change Interrupts of Chapter~\ref{c3:ch}. Then work the
+exercises in \secref{c4:sec:exercises}. The Reflection and Calculation exercises are answered in
+Appendix~\ref{app:answers}; the Code exercises have no printed solution, because the board tells
+you whether a program does what the exercise asks.
+
+\input{chapters/04/adc}
+\input{chapters/04/summary}
+\input{chapters/04/exercises}

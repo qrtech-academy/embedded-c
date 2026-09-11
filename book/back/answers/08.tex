@@ -1,0 +1,20 @@
+% Answers to Chapter 8's exercises, lectures/L08/appendix/b_exercises.md. The book's own answers:
+% the lecture publishes none.
+\answerchapter{8}{The Watchdog Timer}
+
+\answer{c8:ex:1}
+Against the program that has gone wrong switching off the thing that is there to catch it going
+wrong. A watchdog earns its keep exactly when the code is misbehaving: stuck in a loop, running off
+through a corrupted pointer or return address, writing to registers it never meant to touch. If a
+single stray write to \code{WDTCSR} could clear \code{WDE} or stretch the timeout, the same fault
+the watchdog should recover from could disarm it first, and the chip would hang anyway.
+
+With the interlock, one accidental write is not enough: turning the watchdog off or changing its
+timeout takes \code{WDCE} and \code{WDE} written together, and then the new configuration written
+with \code{WDCE} clear within four cycles. Runaway code is very unlikely to produce that exact
+sequence by chance. (The datasheet is precise about which direction is protected: setting
+\code{WDE} is allowed at any time, because a stray write that arms the watchdog does no harm; it is
+clearing \code{WDE} and changing the prescaler that need the sequence.) EEPROM's \code{EEMPE}
+guards stored data against an accidental write; the watchdog's \code{WDCE} guards the safety net
+itself. \code{WDRF} (\secref{c8:a:3}) is the same idea taken one step further: after a watchdog
+reset it holds \code{WDE} set until the flag is cleared.

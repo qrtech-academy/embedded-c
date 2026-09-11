@@ -1,0 +1,101 @@
+% Answers to Chapter 9's exercises, lectures/L09/appendix/b_exercises.md. The book's own answers:
+% the lecture publishes none. Exercises 9.3 to 9.6 are Code exercises; only the design questions
+% they ask are answered, without code.
+\answerchapter{9}{Structs as Drivers}
+
+\answer{c9:ex:1}
+A \code{#define}d \code{LED_ON} bakes one specific pin, and its port, into the macro: it can only
+ever mean that one LED, so which LED it acts on is decided when the macro is written, not when it
+is used. A \code{gpio_t} turns the pin, and the registers that go with it, into data: one set of
+functions, \code{gpio_write()}, \code{gpio_toggle()} and the rest, works on whichever instance it
+is handed, so which LED becomes an argument.
+
+To support a second LED:
+\begin{itemize}
+  \item \textbf{Macros:} a whole new family, \code{LED2_ON}, \code{LED2_OFF}, a toggle, and its
+    own setup lines, copied from the first and renamed by hand, with every copy a chance to leave a
+    \code{1} where a \code{2} belongs.
+  \item \textbf{\code{gpio_t}:} one more instance,
+    \code{gpio_t led2 = {&DDRB, &PORTB, &PINB, 2U};}, and one more \code{gpio_init()} call (or one
+    more line in \secref{c9:a:4}'s \code{leds[]} array). No new functions.
+\end{itemize}
+
+\answer{c9:ex:2}
+\textbf{\code{gpio_read()} by value} would still return the right answer: the copy's \code{pinx}
+holds the address of the same \code{PINx} register, so reading through it reads the same pin. What
+changes is the cost and the safety net. Every call copies the whole struct instead of one 2-byte
+pointer: 7 bytes for \secref{c9:a:2}'s \code{gpio_t} (three 2-byte pointers and a byte), 10 for
+the demo's in \secref{c9:a:5}, on a chip with 2\,KB of RAM. And the \code{NULL} check has to go,
+because a struct passed by value cannot be \code{NULL}.
+
+\textbf{\code{gpio_init()} by value}: \secref{c9:a:2}'s version would still configure the pin
+correctly, but only by accident. It never writes to the struct's own fields, only through its
+pointers to the hardware registers, and the copy's pointers point at the same registers. The moment
+an init function stores something in the instance, as Exercise~\ref{c9:ex:4}'s does when it
+computes \code{ddrx}, \code{portx}, \code{pinx} and the bit position, the stores land in the copy,
+which vanishes when the function returns, and the caller's instance is left uninitialized with no
+diagnostic.
+
+\answer{c9:ex:3}
+\textbf{Pointers kept.} \code{gpio_free()} has cleared the pin's \code{DDRx} bit, so the direction
+check in \code{gpio_write()} and \code{gpio_toggle()} fails and both return without touching
+anything: a harmless no-op, as long as the pin stays free. The danger comes later. Once something
+else claims the same pin and makes it an output again, the stale instance passes the direction
+check and silently drives a pin it no longer owns.
+
+\textbf{Pointers set to \code{NULL}.} \secref{c9:a:2}'s functions check \code{self} but not its
+fields, so \code{*self->ddrx} dereferences a null pointer, which is undefined behaviour. The
+ATmega328P has no memory protection to catch it: address 0 of its data space is the CPU register
+\code{r0}, so instead of a crash you get a register silently read, and possibly written.
+
+\textbf{Preferable:} set them to \code{NULL} \emph{and} add the matching check
+(\code{NULL == self->ddrx}) to every function, so that a freed instance is recognisably dead and
+can never reach the pin again, whoever owns it by then. Nulling the pointers without adding the
+checks is worse than leaving them alone.
+
+\answer{c9:ex:4}
+No. A \code{const} member can only be given its value by an initializer where the object is
+defined; it can never be assigned afterwards. In \secref{c9:a:2} that is exactly how \code{pin} got
+its value, from the struct literal, so \code{const} cost nothing. Now \code{gpio_init()} computes
+the bit position and assigns it (for port B, the pin number minus 8) to an object that already
+exists, which a \code{const} member forbids: the compiler rejects the assignment (``assignment of
+read-only member''), and casting the \code{const} away to force it is undefined behaviour. So
+\code{pin} drops its \code{const}, like \code{ddrx}, \code{portx} and \code{pinx}, which never had
+one. \Secref{c10:a:2} reaches the same conclusion for \code{pin} and \code{pcicrx}.
+
+\answer{c9:ex:5}
+\textbf{Why \code{static}.} At file scope \code{static} is about linkage, not lifetime: a
+file-scope variable lives for the whole program either way. \code{static} gives \code{pin_reg}
+internal linkage, so the name is visible only inside \file{gpio.c}, and only \code{gpio_init()} and
+\code{gpio_free()} can change it. That is the whole point of the table: it enforces an invariant,
+one owner per pin, and it can only do that if nothing else can edit it.
+
+\textbf{Without \code{static}}, \code{pin_reg} has external linkage, and two things break:
+\begin{itemize}
+  \item Any other file can write \code{extern uint16_t pin_reg;} and set or clear bits behind the
+    driver's back, handing out the same pin twice or leaking a reservation.
+  \item The name is exported to the linker, where it collides with any other global
+    \code{pin_reg} in the program, say a timer driver's reservation table of the same name: either
+    a multiple-definition error at link time or, where uninitialized globals are merged as common
+    symbols (\code{-fcommon}, GCC's default before version~10), one variable silently shared by two
+    unrelated drivers.
+\end{itemize}
+
+\answer{c9:ex:6}
+Yes. After \code{timer_clear()} the instance no longer owns a hardware timer/counter, and another
+\code{timer_t} may already have claimed the one it had; any field left pointing at it would let the
+old instance reach hardware it no longer owns, the same danger as a freed \code{gpio_t} in
+Exercise~\ref{c9:ex:3}. The safe, inert values are the ones every function can recognise as ``owns
+nothing'':
+\begin{itemize}
+  \item The reserved timer/counter set to a value no timer/counter has (e.g.\ \code{0xFF}), with
+    every function checking it first, so \code{timer_start()} or \code{timer_toggle()} on a cleared
+    instance does nothing instead of restarting hardware someone else now owns.
+  \item Running \code{false} and the elapsed-time count \code{0}, so \code{timer_running()} reports
+    it as stopped.
+  \item The callback \code{NULL}, so nothing can call through it, and the timeout \code{0}, the one
+    value \code{timer_init()} refuses, so the instance reads as never initialized.
+\end{itemize}
+The hardware side goes first: stop the timer/counter's clock, disable its compare-match interrupt,
+and clear the driver's own record of which instance owns it, before the reservation bit is
+released, so that its interrupt can never fire for an instance that no longer owns it.

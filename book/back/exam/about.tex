@@ -1,0 +1,133 @@
+% Appendix, from exam/README.md: what the two written papers are for, what they cover, the
+% conventions they assume, and how they are marked.
+
+\chapter{The Self-Assessment Papers}
+\label{exam:ch:about}
+
+This appendix and the four after it hold two complete three-hour papers for \emph{Embedded C},
+with worked solutions. Appendices~\ref{exa:ch:paper} and \ref{exb:ch:paper} are the papers,
+questions only; Appendices~\ref{ansa:ch:answers} and \ref{ansb:ch:answers} are their model answers,
+with marks.
+
+Each paper is self-contained. It states its own rubric, and it closes with a register reference
+covering every ATmega328P register and bit it refers to, so nobody sitting one needs a datasheet,
+a chapter of this book, or this appendix.
+
+\section*{What these are for}
+The book has \textbf{no exam and nothing is marked}. What you get instead is the exercise set after
+every chapter, and the questions in every chapter's review.
+
+These papers do not replace that. \textbf{They are here for you to test your own skills and
+knowledge, nothing more.} They gate nothing, they are not a qualification, and no part of the book
+requires them. Nothing in the companion repository depends on them, and neither \code{make build}
+nor \code{make format-check} knows they exist.
+
+What they check is something the exercises cannot. Every exercise is done at a keyboard, with the
+chapter open beside you, the datasheet beside that, and a board on the desk to tell you whether it
+worked. These papers give you a page of register names and take the rest away, then ask what you
+can reconstruct --- which of the rules you have absorbed and which you have merely been looking up.
+
+\textbf{Take one after the last chapter.} Both papers draw on all ten chapters, so sitting one
+partway through examines material you have not read yet, and the result says more about how far
+you have read than about what you have understood.
+
+\section*{The two papers}
+Both cover the whole book, Chapters~1 to 10, at the same weighting. They share no question. Either
+can be used alone; use both as a main sitting and a resit, or in alternate years.
+
+\begin{booktable}{@{}p{4.6em}Lp{5.4em}r@{}}
+  \thead{Question} & \thead{Topic} & \thead{Chapters} & \thead{Marks} \\
+  \midrule
+  1 & The C language underneath: pointers, macros, types & 1 & 12 \\
+  2 & Registers and bitwise I/O & 2 & 12 \\
+  3 & Interrupts, edges and \code{volatile} & 3 & 12 \\
+  4 & The ADC, and timers that count & 4, 5 & 13 \\
+  5 & Serial communication & 6 & 13 \\
+  6 & EEPROM and the watchdog & 7, 8 & 13 \\
+  7 & Structs as drivers & 9 & 12 \\
+  8 & Encapsulation and polymorphism in C & 10 & 13 \\
+  \midrule
+    & & & \textbf{100} \\
+\end{booktable}
+
+\textbf{Both papers mix theory with code}, because the subject does. Roughly half the marks are for
+prose --- what \code{volatile} guarantees, why an ISR must not transmit, what an opaque struct
+protects --- and roughly half are for reading or writing C on paper.
+
+The two papers differ in which half they lean on:
+\begin{itemize}
+  \item \textbf{Paper A leans towards code that is put in front of you.} All eight of its questions
+    hand you a snippet that compiles and is wrong: a macro whose missing parentheses silently turn
+    50 into 32, a \code{free()} that leaves the caller holding the freed address, a \code{setup()}
+    that writes board pin numbers where port bit positions belong and therefore writes zero to
+    every register, an interrupt armed at the peripheral but never enabled globally, an ADC read
+    with no reference and no wait, a UART driver with the baud \emph{rate} written into
+    \code{UBRR0}, an EEPROM write with \code{EEPE} set before \code{EEMPE}, a watchdog ``pet'' that
+    sets a bit instead of executing an instruction, a \code{gpio_toggle()} that uses \code{^=} on
+    \code{PINx}, and a vtable whose interface field is not the struct's first member. Naming the
+    defect is half the marks; saying what it does to the running program is the other half.
+  \item \textbf{Paper B leans towards code you write and design decisions you justify.} It asks for
+    a complete three-LED chase program written from nothing, an enumeration and its validity check,
+    a \code{realloc()}-based resize that survives a failed allocation, an INT1 handler with an
+    atomic toggle, \code{adc_read()} in full, \file{driver/serial.h} in full with its Doxygen, the
+    EEPROM read/write pair, the watchdog timeout enumeration and its two odd values, a GPIO driver
+    that maps an Arduino pin number to a port, a pin reservation table, and a \code{gpio_stub_t}
+    that satisfies the vtable interface with no hardware behind it. Several parts are pure
+    judgement: which of four values belongs in EEPROM and why, where a report belongs relative to
+    the interrupt that triggered it, and what opacity takes away from a caller.
+\end{itemize}
+
+Neither paper asks anything of a compiler that a careful reader could not answer from the
+chapters. Where a question turns on a rule that is easy to state and easy to get backwards ---
+which register reports a pin's actual level, which of \code{EEMPE} and \code{EEPE} comes first, why
+\code{PINx = (1U << n)} is atomic and \code{PORTx ^= (1U << n)} is not --- the solution says so at
+length, because that is where the marks and the understanding both are.
+
+\section*{Conventions the papers assume}
+Both papers state these in their own rubric, so a candidate never has to have read this appendix.
+\begin{itemize}
+  \item \textbf{C11 on an ATmega328P at 16\,MHz}, built with \code{avr-gcc}. Standard and AVR
+    headers may be assumed included unless a question asks for them.
+  \item \textbf{Register and bit names are not memory-tested.} Each paper closes with a register
+    reference of its own, so nobody sitting one needs a datasheet in the room. Misspelling a bit
+    costs nothing; reaching for the wrong \emph{register}, or the right register at the wrong
+    \emph{time}, costs everything. What the reference deliberately withholds is the ordering rules,
+    the timing rules and the formulas --- those are the parts being examined.
+  \item \textbf{Code is marked on semantics, not syntax.} A missing semicolon, a forgotten
+    \code{#include} or a brace in the wrong column costs nothing. A missing \code{volatile} costs
+    everything.
+  \item \textbf{The book's house style is expected} where a question asks for it:
+    \code{snake_case} with \code{UPPER_CASE} macros, \code{static} on anything private, header
+    guards named after the file, Doxygen in the imperative mood, \code{self} as a pointer (and
+    \code{const} when the function only reads), Yoda comparisons, braces on every \code{if},
+    fixed-width types with \code{U} suffixes, \code{const} on by-value parameters in the definition
+    but not the prototype, and \code{volatile} on anything shared with an ISR.
+  \item \textbf{``State the consequence'' means the consequence.} Naming a defect earns half the
+    marks; saying what it does to the running program earns the other half. ``This is wrong''
+    scores nothing.
+  \item \textbf{Where a question asks for a stated number of defects}, listing more is not
+    penalised, but only that many are marked, so the strongest answers go first.
+\end{itemize}
+
+\section*{Marking}
+Every solution is written to be marked by somebody who has read the chapters and does not otherwise
+write embedded C for a living, so each carries the reasoning rather than the answer alone. Marks
+are shown per part, and the arithmetic in the timer, ADC and baud-rate questions is worked through
+step by step rather than asserted.
+
+Three conventions worth agreeing before a paper is marked:
+\begin{itemize}
+  \item \textbf{Method carries the marks.} A correct diagnosis with a clumsy fix is worth more than
+    a correct fix with no diagnosis. Several questions feed the next part, so an error should be
+    followed through rather than penalised twice.
+  \item \textbf{The named traps are worth full marks on their own.} A number of parts exist entirely
+    to see whether a candidate walks into a specific mistake: reading a button from \code{PORTx}, a
+    \code{1U << 9U} written to an 8-bit register, a plain \code{=} where \code{|=} was needed, an
+    ISR-shared flag without \code{volatile}, \code{EEPE} before \code{EEMPE}, a watchdog pet written
+    as a register access, \code{^=} on \code{PINx}, a \code{gpio_t} passed by value, an interface
+    field that is not first in its struct. Where a solution flags one of these, a candidate who
+    walks into it loses those marks and no others.
+  \item \textbf{The discussion parts are not decoration.} ``State why'' is where the book's actual
+    content is, and a paper marked only on whether the code would compile would pass a candidate
+    who has understood none of it.
+\end{itemize}

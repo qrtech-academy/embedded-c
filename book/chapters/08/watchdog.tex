@@ -1,0 +1,307 @@
+% Section 8.1, from lectures/L08/appendix/a_watchdog.md.
+
+\section{The Watchdog Timer}
+\label{c8:sec:watchdog}\label{c8:app:a}
+
+\subsection{The watchdog timer: what it is and why}
+\label{c8:a:1}
+\begin{itemize}
+  \item A watchdog is a second, independent timer with one job: if it isn't reset (``petted'')
+    within its configured timeout, it resets the entire chip.
+  \item The use cases are:
+  \begin{itemize}
+    \item A program that might hang.
+    \item An infinite loop from a bug.
+    \item A sensor that never responds.
+    \item A peripheral wait-loop (like \secref{c7:a:2}'s \code{EEPE} wait, or Chapter~\ref{c4:ch}'s
+      \code{ADIF} wait) that never sees its flag set.
+  \end{itemize}
+  \item Without a watchdog, a hang like that freezes the device until someone power-cycles it by
+    hand. With one, the chip recovers on its own within one timeout period.
+  \item The watchdog timer follows this pattern:
+  \begin{itemize}
+    \item Enable the watchdog with a timeout comfortably longer than one iteration of
+      \code{main()}'s loop normally takes.
+    \item Reset the watchdog once per iteration of \code{main()}'s loop.
+    \item As long as the loop keeps running, the watchdog never fires. The moment it doesn't
+      (because something hung), the watchdog's timeout expires and the chip restarts.
+  \end{itemize}
+\end{itemize}
+
+\subsection{Watchdog registers}
+\label{c8:a:2}
+One register, \textbf{\code{WDTCSR}} (Watchdog Timer Control and Status Register), controls both
+enablement and timeout via bits \code{WDE} (Watchdog Enable) and \code{WDP0}--\code{WDP3} (Watchdog
+Prescaler, selecting the timeout duration).
+
+The four prescaler bits, \code{WDP[3:0]}, set the timeout anywhere from 16\,ms up to 8192\,ms:
+
+\begin{narrowtable}{@{}rcr@{}}
+  \thead{Timeout} & \thead{\code{WDP[3:0]}} & \thead{Value} \\
+  \midrule
+  16\,ms   & \code{0000} & 0  \\
+  32\,ms   & \code{0001} & 1  \\
+  64\,ms   & \code{0010} & 2  \\
+  128\,ms  & \code{0011} & 3  \\
+  256\,ms  & \code{0100} & 4  \\
+  512\,ms  & \code{0101} & 5  \\
+  1024\,ms & \code{0110} & 6  \\
+  2048\,ms & \code{0111} & 7  \\
+  4096\,ms & \code{1000} & 32 \\
+  8192\,ms & \code{1001} & 33 \\
+\end{narrowtable}
+
+\noindent The jump from 7 to 32 isn't a typo: \code{WDP2}--\code{WDP0} sit at contiguous bits
+2--0 of \code{WDTCSR}, so the first eight timeouts (16\,ms--2048\,ms) map straight onto the
+integers 0--7. \code{WDP3}, needed for 4096\,ms and 8192\,ms, lives at bit 5 instead, so those two
+timeouts land on \code{1 << 5} (32) and \code{(1 << 5) | (1 << 0)} (33).
+
+This maps cleanly onto a plain \code{enum}: the first eight members can take their default values
+(0--7, counting up in declaration order, same as \secref{c1:a:3}'s \code{sensor_state_t}), and
+only the last two need an explicit value:
+
+\begin{ccode}
+typedef enum
+{
+    WATCHDOG_TIMEOUT_16MS,        ///< 16 ms timeout.
+    WATCHDOG_TIMEOUT_32MS,        ///< 32 ms timeout.
+    WATCHDOG_TIMEOUT_64MS,        ///< 64 ms timeout.
+    WATCHDOG_TIMEOUT_128MS,       ///< 128 ms timeout.
+    WATCHDOG_TIMEOUT_256MS,       ///< 256 ms timeout.
+    WATCHDOG_TIMEOUT_512MS,       ///< 512 ms timeout.
+    WATCHDOG_TIMEOUT_1024MS,      ///< 1024 ms timeout.
+    WATCHDOG_TIMEOUT_2048MS,      ///< 2048 ms timeout.
+    WATCHDOG_TIMEOUT_4096MS = 32, ///< 4096 ms timeout.
+    WATCHDOG_TIMEOUT_8192MS = 33, ///< 8192 ms timeout.
+} watchdog_timeout_t;
+\end{ccode}
+
+\noindent Cast a \code{watchdog_timeout_t} directly to \code{uint8_t} and write it to the
+\code{WDTCSR} prescaler bits. Its encoded value places the prescaler bits correctly for all ten
+timeout settings.
+
+Clearing \code{WDE}, or changing the prescaler bits, needs the same kind of timed sequence as
+EEPROM's \code{EEMPE}/\code{EEPE} from Chapter~\ref{c7:ch}, and for the same reason (setting
+\code{WDE} alone doesn't, but this book's code always writes \code{WDE} and the timeout together,
+so it always uses the sequence):
+\begin{itemize}
+  \item It's a safety interlock, this time specifically so runaway code can't accidentally disable
+    the one thing meant to catch it. \code{WDCE} (Watchdog Change Enable) must be set together with
+    \code{WDE}, and the real configuration written within 4 cycles:
+\end{itemize}
+
+\begin{ccode}
+cli();
+WDTCSR |= (1U << WDCE) | (1U << WDE);                      // Unlock the timed sequence.
+WDTCSR = (1U << WDE) | (uint8_t)(WATCHDOG_TIMEOUT_1024MS); // Enable watchdog, 1024 ms timeout.
+sei();
+\end{ccode}
+
+\noindent Resetting the countdown doesn't touch \code{WDTCSR} at all, it's a single dedicated CPU
+instruction, \code{WDR} (Watchdog Reset). Nothing about \code{WDR} lives behind a register bit, so
+there's no C statement (no \code{WDTCSR |= ...}) that produces it; the only way to emit a specific
+machine instruction from C is \textbf{inline assembly}, \code{asm(...)}, which drops a literal
+instruction straight into the compiled output, bypassing C entirely for that one line:
+
+\begin{ccode}
+asm("WDR");
+\end{ccode}
+
+\noindent This is the simplest form GCC supports, ``basic'' inline assembly: just a literal
+instruction as a string, no inputs, no outputs, nothing declared as clobbered. (GCC also has
+``extended'' inline assembly, with input/output operands and clobber lists, for wiring C variables
+into and out of an \code{asm} block; \code{WDR} doesn't read or write anything C can see, so none of
+that machinery is needed here.)
+
+One gotcha: \code{asm} is a GNU extension, not standard C, recognized only under a GNU dialect
+(\code{-std=gnu11}) or GCC's default mode. This book's demos compile with \code{-std=c11}, strict
+ISO C, where the compiler doesn't know the word \code{asm} at all and this line fails to build.
+\code{__asm__}, the double-underscore spelling, is always recognized regardless of \code{-std=}, so
+that's the form used from here on:
+
+\begin{ccode}
+__asm__("wdr");
+\end{ccode}
+
+\noindent This book writes straight against the registers instead of reaching for a library, the
+same as every peripheral so far (UART, ADC, timers, EEPROM): no header between the code and the
+hardware, so nothing about what the chip is actually doing is hidden behind a macro.
+
+\begin{ccode}
+#include <avr/interrupt.h>
+#include <avr/io.h>
+
+/**
+ * @brief Enable the watchdog timer with a 1024 ms timeout.
+ */
+static void watchdog_enable(void)
+{
+    cli();
+    WDTCSR |= (1U << WDCE) | (1U << WDE);
+    WDTCSR = (1U << WDE) | (uint8_t)(WATCHDOG_TIMEOUT_1024MS);
+    sei();
+}
+
+/**
+ * @brief Reset the watchdog timer, restarting its countdown.
+ */
+static void watchdog_reset(void)
+{
+    __asm__("wdr");
+}
+\end{ccode}
+
+\subsection{\code{WDRF}: don't get locked out of disabling the watchdog}
+\label{c8:a:3}
+A watchdog-caused reset sets \code{WDRF} (Watchdog Reset Flag) in \textbf{\code{MCUSR}} (MCU Status
+Register). That flag isn't just informational: the datasheet has \code{WDE} read back as set for as
+long as \code{WDRF} is set, no matter what gets written to it. Try to clear \code{WDE} (or disable
+the watchdog some other way) while \code{WDRF} is still set, and it silently does nothing, the
+watchdog stays armed and fires again next timeout.
+
+This is deliberate, not a bug: it stops a chip that just failed and reset from immediately turning
+its own safety net back off, which is exactly the failure mode a watchdog exists to catch. The
+practical consequence is that \code{WDRF} must be cleared explicitly, and early, before anything
+else touches \code{WDTCSR}:
+
+\begin{ccode}
+MCUSR &= ~(1U << WDRF); // Clear the watchdog reset flag; WDE can't be cleared while it's set.
+\end{ccode}
+
+\noindent Put this as the first line of \code{setup()}, unconditionally, before
+\code{watchdog_enable()} or any other watchdog call. Skip it, and a single watchdog-triggered reset
+can leave the chip unable to ever turn the watchdog off again, whatever the running code tries to
+do about it.
+
+Clearing \code{WDRF} doesn't stop the watchdog, though, and after a watchdog reset it is still
+running. The reset cleared the prescaler bits, so it now runs at its shortest timeout, 16\,ms.
+Configure the watchdog straight after clearing the flag, with the timeout you actually want (or turn
+it off), before anything slow: a \code{setup()} that first spends 16\,ms on something else, and
+printing a single line at 9600 baud already takes that long, is reset again before it gets there,
+and again, forever. That's why \secref{c8:a:5}'s \code{setup()} calls \code{watchdog_init()}, which
+clears \code{WDRF} and then arms the watchdog, before anything else.
+
+On an Uno you may never see this happen, because its bootloader clears \code{MCUSR} and switches
+the watchdog off before it starts your program. Don't rely on that: a program flashed without a
+bootloader, or run in a simulator, gets no such help. Nor do Nano boards with the older bootloader
+(the ones that need \code{-b 57600}, \secref{c2:d:7}), which after a watchdog reset are known to get
+stuck resetting inside the bootloader itself, before your program ever runs.
+
+\subsection{System Reset Mode vs.\ Interrupt Mode}
+\label{c8:a:4}
+\code{WDE} and \code{WDIE} (Watchdog Interrupt Enable), both in \code{WDTCSR}, pick what a timeout
+actually does, independently of each other:
+\begin{itemize}
+  \item \code{WDE} alone: \textbf{System Reset Mode}. Timeout resets the chip, same as
+    \secref{c8:a:2}'s \code{watchdog_enable()}.
+  \item \code{WDIE} alone: \textbf{Interrupt Mode}. Timeout jumps to \code{ISR(WDT_vect)} instead
+    of resetting anything.
+  \item Both set: timeout fires \code{ISR(WDT_vect)} \emph{and} clears \code{WDIE} in hardware on
+    the way in, leaving \code{WDE} armed. Pet the watchdog inside that ISR (or soon after) and the
+    reset never happens; miss the next timeout too and the chip resets. That's one warning before
+    the safety net actually trips.
+\end{itemize}
+Setting the prescaler bits still needs \secref{c8:a:2}'s \code{WDCE} timed sequence, same as
+\code{watchdog_enable()}, just with \code{WDE} left at \code{0} in the value that gets committed.
+\code{WDIE} itself isn't behind that sequence, so it's set separately, straight after:
+
+\begin{ccode}
+/**
+ * @brief Enable the watchdog in Interrupt Mode: ISR(WDT_vect) runs on timeout instead of a
+ *        system reset.
+ *
+ * @param[in] timeout Timeout to arm the watchdog with (see A.2's table).
+ */
+static void watchdog_enable_interrupt(const watchdog_timeout_t timeout)
+{
+    watchdog_reset();
+    cli();
+    WDTCSR |= (1U << WDCE) | (1U << WDE); // Unlock the timed sequence.
+    WDTCSR = (uint8_t)(timeout);          // Commit prescaler bits, WDE left at 0.
+    sei();
+    WDTCSR |= (1U << WDIE);               // Not part of the timed sequence.
+}
+\end{ccode}
+
+\subsection{Worked example: petting the watchdog in Chapter 7's demo}
+\label{c8:a:5}
+% Ragged, because the long names in this paragraph leave no good way to justify it.
+{\raggedright
+Extends \secref{c7:a:4}'s button-toggles-LED1-and-persists-to-EEPROM demo with a 1024\,ms
+watchdog (System Reset Mode, \secref{c8:a:2}) on top. \code{setup()} calls
+\code{watchdog_init(WATCHDOG_TIMEOUT_1024MS)} once, before anything else, for the reason
+\secref{c8:a:3} gives; \code{main()}'s loop calls \code{watchdog_reset()} first thing, every
+iteration, whether or not a button event happened that iteration, same as \secref{c8:a:1}'s
+pattern. The circuit is the one of Figure~\ref{c6:fig:serial}, unchanged.\par}
+
+\begin{console}
+watchdog_driver_demo/
+├── Makefile
+├── main.c
+├── include/
+│   └── driver/
+│       ├── eeprom.h
+│       ├── serial.h
+│       └── watchdog.h
+└── source/
+    └── driver/
+        ├── eeprom.c
+        ├── serial.c
+        └── watchdog.c
+\end{console}
+
+\noindent The serial and EEPROM drivers were introduced in Chapters~\ref{c6:ch} and~\ref{c7:ch}
+respectively. \file{driver/watchdog.h} and \file{driver/watchdog.c}, printed in full below, are
+\secref{c8:a:2}'s \code{watchdog_timeout_t} plus \code{watchdog_init()}/\code{watchdog_reset()},
+nothing more.
+
+\subsubsection{The driver in full}
+\cfile{lectures/L08/watchdog_driver_demo/include/driver/watchdog.h}
+\needspace{8\baselineskip}
+\cfile{lectures/L08/watchdog_driver_demo/source/driver/watchdog.c}
+
+\subsubsection{The program}
+\code{main.c} in full:
+
+\cfile{lectures/L08/watchdog_driver_demo/main.c}
+
+\noindent Try commenting out just the \code{watchdog_reset();} call and reflashing: nothing about
+the rest of the code looks wrong, \code{setup()} still runs, the button still toggles LED1 and
+reports over UART, but roughly every 1024\,ms the chip reboots on its own, visible as
+\code{setup()}'s LED1-state report firing over and over in the serial monitor even with nobody
+touching the button. That's \secref{c8:a:1}'s watchdog doing exactly what it's for: the timeout
+wasn't pet in time, so it fired.
+
+This is the one experiment in the book that's simpler to run in the simulator than on the board,
+and it's worth doing even if you have hardware: no reflashing between the two versions and no
+serial monitor to wire up, so the before-and-after is seconds apart instead of minutes. Petting the
+watchdog gives one state report and then silence; starving it gives the same report over and over.
+See Appendix~\ref{sim:ch}, which walks through this demo specifically in
+\secref{sim:sec:watchdog}.
+
+\subsubsection{Building and running}
+Build and flash the same way as \secref{c6:a:6}: on Linux, run \code{make} in the demo's
+directory, \file{lectures/L08/watchdog_driver_demo} (\code{make flash} to program the board); on
+Windows via Microchip Studio, recreate this folder structure inside the project and add
+\file{include} as an include directory. The demo's \file{Makefile} is the one printed in
+\secref{c6:sec:build}, with the EEPROM and watchdog drivers added to its source files:
+
+\begin{makecode}
+SRC_FILES := main.c \
+             source/driver/eeprom.c \
+             source/driver/serial.c \
+             source/driver/watchdog.c \
+\end{makecode}
+
+\subsection{Why no structs here}
+\label{c8:a:6}
+UART (Chapter~\ref{c6:ch}), EEPROM (Chapter~\ref{c7:ch}) and the watchdog all get away with plain
+functions and no struct, unlike where this book is headed next. The ATmega328P has exactly one
+UART, exactly one EEPROM and exactly one watchdog; there's no second instance to distinguish
+between, no \code{self} parameter needed, nothing to bundle. A struct would just be ceremony around
+state that only ever exists once.
+
+LEDs, buttons, and timers aren't so lucky, a program regularly wants several of each, and
+Chapter~\ref{c4:ch}'s five-LED exercise (Exercise~\ref{c4:ex:7}) and Chapter~\ref{c5:ch}'s
+three-timer exercise (Exercise~\ref{c5:ex:7}) already ran into what that means without a better
+tool. That's exactly the gap Chapter~\ref{c9:ch} closes.

@@ -1,0 +1,35 @@
+% Section 2.4, from lectures/L02/README.md: the goals, the evaluation questions, and the next
+% lecture. The README's Reference list, pointing at Appendices C and D, is in the chapter opener.
+
+\needspace{10\baselineskip}
+\section{Review}
+\label{c2:sec:review}
+
+\subsection*{What you should be able to do now}
+After this chapter, you should:
+\begin{itemize}
+  \item Understand why embedded systems are programmed close to the hardware, in C, without an OS
+    underneath.
+  \item Be able to read and write bitwise operations (\code{|}, \code{&}, \code{~}, \code{<<},
+    \code{>>}) to set, clear, and read individual bits in a register.
+  \item Be able to configure a pin as input or output and drive/read it correctly.
+\end{itemize}
+
+\needspace{6\baselineskip}
+\subsection*{Questions to test yourself}
+You should be able to explain:
+\begin{enumerate}
+  \item What's the difference between \code{DDRx}, \code{PORTx}, and \code{PINx}, and when do you
+    write to one versus read from another?
+  \item How do you set bit 3 of a register without disturbing the other bits? How do you clear it?
+  \item Why does an input pin need its pull-up resistor enabled, and what would you expect to happen
+    if you left it disabled with nothing else connected to the pin?
+\end{enumerate}
+
+\needspace{6\baselineskip}
+\subsection*{Looking ahead}
+Chapter~\ref{c3:ch} is about interrupts:
+\begin{itemize}
+  \item Interrupts: reacting to events instead of polling for them.
+  \item External interrupts (INT0/INT1) and Pin Change Interrupts.
+\end{itemize}

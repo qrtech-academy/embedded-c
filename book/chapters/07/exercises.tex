@@ -1,0 +1,46 @@
+% Section 7.3, from lectures/L07/appendix/b_exercises.md.
+
+\section{Exercises}
+\label{c7:sec:exercises}\label{c7:app:b}
+
+\begin{aside}
+\textbf{How to work these.} The Reflection exercises are answered on paper, from the chapter. The
+Code exercise is a program for the board: build and flash it the way \secref{c2:app:c} (Microchip
+Studio) or \secref{c2:app:d} (Linux) describes, or run it in the simulator of
+Appendix~\ref{sim:ch} if you have no board yet: its simulation harness (\secref{sim:sec:harness})
+saves the EEPROM to a file, so what the program stores survives a restart there too.
+
+\textbf{How to check your work.} The Reflection exercises, and the question the Code exercise asks
+about its design, are answered in Appendix~\ref{app:answers}. The Code exercise has no printed
+solution: the board tells you whether the program does what the exercise describes. Try each
+exercise before you read its answer.
+\end{aside}
+
+% ------------------------------------------------------------------------------------------
+\exerciseset{Concepts}
+\label{c7:set:1}
+
+\reflexercise{Waiting before, not after}
+\label{c7:ex:1}
+{\raggedright
+Why does \code{eeprom_write_byte()} wait on the \code{EEPE} flag before it starts, but
+\code{eeprom_read_byte()} doesn't need to wait for anything after its read completes?\par}
+
+\reflexercise{The four-cycle window}
+\label{c7:ex:2}
+\code{EEMPE} must be followed by \code{EEPE} within four CPU cycles or the write silently fails.
+Why does that specifically mean interrupts need to be disabled for that window, and what real
+failure would you expect if an ISR fired in between and took longer than four cycles to return?
+
+% ------------------------------------------------------------------------------------------
+\exerciseset{Program}
+\label{c7:set:2}
+
+\codeexercise{Fewer EEPROM writes}
+\label{c7:ex:3}
+\secref{c7:a:4}'s \file{eeprom_driver_demo} writes to EEPROM on every single button press. Given
+\secref{c7:a:1}'s write-cycle warning, is that actually a good idea for a device expected to run for
+years? Extend the demo to reduce wear: keep a small, non-persisted counter of presses since the
+last EEPROM write, and only call \code{eeprom_write()} once it reaches \code{5}, instead of on every
+press. \code{main()}'s event handling already separates ``an event happened'' from ``write it
+out'', build on that rather than restructuring it.

@@ -1,0 +1,260 @@
+% Section 9.3, from lectures/L09/appendix/b_exercises.md.
+
+\section{Exercises}
+\label{c9:sec:exercises}\label{c9:app:b}
+
+\begin{aside}
+\textbf{How to work these.} The Reflection exercises are answered on paper, from the chapter. The
+Code exercises are programs for the board: build and flash them the way \secref{c2:app:c}
+(Microchip Studio) or \secref{c2:app:d} (Linux) describes, or run them in the simulator of
+Appendix~\ref{sim:ch} if you have no board yet.
+
+\textbf{How to check your work.} The Reflection exercises, and the questions Code
+Exercises~\ref{c9:ex:3} to~\ref{c9:ex:6} ask about their design, are answered in
+Appendix~\ref{app:answers}. The Code exercises have no printed solution: the board tells you
+whether a program does what the exercise describes. Try each exercise before you read its answer.
+\end{aside}
+
+% ------------------------------------------------------------------------------------------
+\exerciseset{Concepts}
+\label{c9:set:1}
+
+\reflexercise{A struct or a macro}
+\label{c9:ex:1}
+What problem does bundling a pin number into a \code{gpio_t} struct solve that a
+\code{#define}d \code{LED_ON} macro can't? What has to change to support a second LED under each
+approach?
+
+\reflexercise{By pointer or by value}
+\label{c9:ex:2}
+\code{gpio_read()} takes \code{const gpio_t* self} rather than \code{gpio_t self} (the whole
+struct, by value). What would change, functionally or in cost, if it took \code{gpio_t self}
+instead? Would \code{gpio_init()} still work correctly if it took \code{self} by value?
+
+% ------------------------------------------------------------------------------------------
+\exerciseset{Program}
+\label{c9:set:2}
+
+\codeexercise{Freeing a GPIO}
+\label{c9:ex:3}
+Add \code{gpio_free(gpio_t* self)} to \secref{c9:a:2}'s driver:
+\begin{itemize}
+  \item Reset the pin's \code{DDRx}/\code{PORTx} bits back to their power-on state (input,
+    pull-up disabled).
+  \item Decide whether \code{self->ddrx}, \code{self->portx}, and \code{self->pinx} should be set
+    to \code{NULL} afterwards.
+  \item Justify the choice:
+  \begin{itemize}
+    \item What does calling \code{gpio_write()} or \code{gpio_toggle()} on a freed instance do in
+      each case?
+    \item Which is preferable?
+  \end{itemize}
+\end{itemize}
+
+\codeexercise{Initializing from a pin number}
+\label{c9:ex:4}
+Rewrite \code{gpio_init()} so callers pass a single pin number, 0--13, instead of
+\code{DDRx}/\code{PORTx}/\code{PINx} pointers:
+\begin{itemize}
+  \item Pin mapping:
+  \begin{itemize}
+    \item 0--7 map to \code{PORTD0}--\code{PORTD7}.
+    \item 8--13 map to \code{PORTB0}--\code{PORTB5}.
+  \end{itemize}
+  \item \code{gpio_init()} should compute and store \code{ddrx}/\code{portx}/\code{pinx} (and the
+    bit position) itself.
+  \item Return \code{bool}:
+  \begin{itemize}
+    \item \code{false} for any pin number outside 0--13, without touching any register.
+    \item \code{true} otherwise, after initialization.
+  \end{itemize}
+  \item \code{pin} is \code{const} in \secref{c9:a:2}'s \code{gpio_t} because it's only ever set
+    at struct-literal time; now that \code{gpio_init()} derives it from the pin number instead,
+    does it still make sense for \code{pin} to stay \code{const}?
+\end{itemize}
+
+\codeexercise{A pin-reservation table}
+\label{c9:ex:5}
+Add a pin-reservation table:
+\begin{itemize}
+  \item Declare a \code{static uint16_t pin_reg} in \file{gpio.c}.
+  \item Use one bit for each pin number introduced in Exercise~\ref{c9:ex:4}:
+  \begin{itemize}
+    \item Bit~$n$ represents pin~$n$.
+    \item \code{1} means that the pin is reserved.
+    \item \code{0} means that the pin is free.
+  \end{itemize}
+  \item Update \code{gpio_init()}:
+  \begin{itemize}
+    \item Check the bit corresponding to the requested pin.
+    \item If the bit is already set, return \code{false}.
+    \item In that case, do not modify any hardware register.
+    \item If the bit is clear, set it to reserve the pin.
+    \item Then initialize the GPIO as in Exercise~\ref{c9:ex:4}.
+    \item Return \code{true} when the initialization succeeds.
+  \end{itemize}
+  \item Extend the \code{gpio_free()} function from Exercise~\ref{c9:ex:3}:
+  \begin{itemize}
+    \item Clear the pin's bit in \code{pin_reg}.
+    \item This allows a later call to \code{gpio_init()} to reserve the same pin again.
+  \end{itemize}
+  \item Answer the following questions:
+  \begin{itemize}
+    \item Why must \code{pin_reg} be declared \code{static}?
+    \item What would break if it were not \code{static}?
+  \end{itemize}
+\end{itemize}
+
+\codeexercise{A timer driver}
+\label{c9:ex:6}
+Capstone --- harder: Implement a timer driver named \code{timer_t}:
+\begin{itemize}
+  \item Follow the header/source separation used in \secref{c9:a:3}:
+  \begin{itemize}
+    \item \file{driver/timer.h}
+    \item \file{driver/timer.c}
+  \end{itemize}
+  \item The timer must run a callback function whenever its timeout expires.
+  \item \code{timer_t} should follow the same ownership model as \code{gpio_t}:
+  \begin{itemize}
+    \item The caller declares and owns each \code{timer_t} instance.
+    \item The caller may declare an array of timer instances, just as \secref{c9:a:4} declares an
+      array of \code{gpio_t} instances.
+    \item \code{timer_init()} initializes an existing instance in place.
+  \end{itemize}
+  \item The ATmega328P has only three hardware timer/counters:
+  \begin{itemize}
+    \item At most three \code{timer_t} instances may therefore be active at the same time.
+    \item Use a reservation scheme similar to Exercise~\ref{c9:ex:5}'s \code{pin_reg}.
+    \item \code{timer_init()} must not create more active timer instances than there are hardware
+      timer/counters available.
+  \end{itemize}
+  \item \code{timer_t} is a complete timer driver instance:
+  \begin{itemize}
+    \item Each instance has:
+    \begin{itemize}
+      \item Its own callback.
+      \item Its own elapsed-time count.
+      \item Its own start/stop state.
+      \item One reserved hardware timer/counter.
+    \end{itemize}
+    \item It is driven directly by the hardware timer/counter and its compare-match interrupt.
+  \end{itemize}
+\end{itemize}
+
+\task{Recommended \file{driver/timer.h}}
+\code{timer_callback_t} is a function pointer, see \secref{c1:a:8} if that syntax is unfamiliar.
+Document every declaration with Doxygen comments, the same way
+\secref{c9:a:2}/\secref{c9:a:3}'s \file{gpio.h} does, and add the header guard yourself (suggested
+guard: \code{DRIVER_TIMER_H_}).
+
+\begin{ccode}
+#include <stdbool.h>
+#include <stdint.h>
+
+/** Alias for timer callbacks. */
+typedef void (*timer_callback_t)(void);
+
+typedef struct
+{
+    // Left for you to design.
+} timer_t;
+
+bool timer_init(timer_t* self, uint32_t timeout_ms, timer_callback_t callback);
+void timer_clear(timer_t* self);
+bool timer_running(const timer_t* self);
+void timer_start(timer_t* self);
+void timer_stop(timer_t* self);
+void timer_toggle(timer_t* self);
+void timer_reset(timer_t* self);
+\end{ccode}
+
+\task{Initialization and reservation}
+\begin{itemize}
+  \item \code{timer_init()} must return \code{false} when:
+  \begin{itemize}
+    \item \code{timeout_ms == 0}.
+    \item \code{callback == NULL}.
+    \item No hardware timer/counter is available.
+  \end{itemize}
+  \item Otherwise, \code{timer_init()} must:
+  \begin{itemize}
+    \item Reserve one free hardware timer/counter.
+    \item Associate it with \code{self}.
+    \item Store the timeout and callback.
+    \item Initialize the timer instance.
+    \item Return \code{true}.
+  \end{itemize}
+  \item \code{timer_clear()} must:
+  \begin{itemize}
+    \item Stop the timer.
+    \item Release its reserved hardware timer/counter.
+    \item Allow that hardware timer/counter to be claimed by a later \code{timer_init()} call.
+    \item Work whether the later call uses the same \code{timer_t} instance or another one.
+  \end{itemize}
+  \item Consider the same design question raised for \code{gpio_free()} in
+    Exercise~\ref{c9:ex:3}:
+  \begin{itemize}
+    \item Should \code{timer_clear()} also reset the fields of \code{self}?
+    \item If so, which values would leave the instance in a safe, inert state?
+  \end{itemize}
+\end{itemize}
+
+\task{Timer control}
+\begin{itemize}
+  \item \code{timer_start()} must start or enable the timer.
+  \begin{itemize}
+    \item It must not change the elapsed-time count.
+  \end{itemize}
+  \item \code{timer_stop()} must stop or disable the timer.
+  \begin{itemize}
+    \item It must not change the elapsed-time count.
+  \end{itemize}
+  \item \code{timer_toggle()} must switch between the running and stopped states.
+  \begin{itemize}
+    \item It must not change the elapsed-time count.
+  \end{itemize}
+  \item \code{timer_reset()} must:
+  \begin{itemize}
+    \item Set the elapsed-time count to zero.
+    \item Preserve the timer's current running or stopped state.
+  \end{itemize}
+\end{itemize}
+
+\task{Driver independence}
+\begin{itemize}
+  \item The timer driver must not know that \code{gpio_t} exists.
+  \item \file{timer.c} must not directly control an LED or read a button.
+  \item Connecting a timer callback to an LED is the responsibility of \file{main.c}.
+\end{itemize}
+
+\task{Hardware demonstration}
+Wire the following circuit:
+\begin{itemize}
+  \item Connect a button to D13.
+  \item Connect an LED to D8.
+  \item Configure a timer with a timeout of 100\,ms.
+\end{itemize}
+The program must behave as follows:
+\begin{itemize}
+  \item Pressing the button toggles the timer between running and stopped.
+  \item While the timer is running:
+  \begin{itemize}
+    \item Its callback runs every 100\,ms.
+    \item The callback toggles the LED.
+  \end{itemize}
+  \item While the timer is stopped:
+  \begin{itemize}
+    \item The LED remains off.
+    \item Calling the callback manually must have no effect.
+  \end{itemize}
+  \item To enforce this behavior, the callback itself must check \code{timer_running()} before
+    toggling the LED.
+\end{itemize}
+
+\task{Testing}
+Confirm \code{timer_init()} returns \code{false} for each of the three invalid cases in
+``Initialization and reservation'': a \code{0} timeout, a \code{NULL} callback, and a fourth
+\code{timer_t} once three hardware timer/counters are already reserved. Then confirm
+\code{timer_clear()} actually frees a hardware timer/counter for reuse: after reserving all three,
+clear one and check that a new \code{timer_init()} call succeeds again.

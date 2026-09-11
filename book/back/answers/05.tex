@@ -1,0 +1,87 @@
+% Answers to Chapter 5's exercises, lectures/L05/appendix/b_exercises.md. The book's own answers:
+% the lecture publishes none.
+\answerchapter{5}{Timers}
+
+\answer{c5:ex:1}
+The prescaler divides the CPU clock, and the tick period is the inverse of the tick frequency:
+\[
+  f_\text{tick} = \frac{16\,000\,000\,\text{Hz}}{256} = 62\,500\,\text{Hz},
+  \qquad
+  T_\text{tick} = \frac{1}{62\,500\,\text{Hz}} = 16\,\text{\textmu s} = 0.016\,\text{ms},
+\]
+the 16\,\textmu s of the \textdiv256 row in the table of \secref{c5:a:2}.
+
+\answer{c5:ex:2}
+An 8-bit timer overflows every 256 ticks:
+\[
+  T_\text{ovf} = 256 \times 16\,\text{\textmu s} = 4.096\,\text{ms},
+  \qquad
+  N = \frac{250\,\text{ms}}{4.096\,\text{ms}} = 61.04.
+\]
+Rounded to the nearest whole number the way the chapter's \code{OVF_MAX} does it,
+$\lfloor 61.04 + 0.5 \rfloor = 61$ overflows. Check: $61 \times 4.096\,\text{ms} =
+249.856$\,ms, 0.144\,ms (0.06\,\%) short of 250\,ms. (Counted in ticks it is the same:
+$250 / 0.016 = 15\,625$ ticks, and $15\,625 / 256 = 61.04$.)
+
+\answer{c5:ex:3}
+Normal mode with overflow counting can only make whole multiples of the overflow period, 256 ticks
+for an 8-bit timer (16.384\,ms at \textdiv1024), and it takes an interrupt for every overflow even
+though only the last one does anything. Any other period is rounded to the nearest multiple, an
+error of up to half an overflow period. CTC chooses the period in single ticks: the counter is
+cleared when it reaches \code{OCRnA}, so the period is $\text{\code{OCRnA}} + 1$ ticks, with
+one interrupt per period and no counting in software. Reach for CTC when the period has to be
+accurate, is not a multiple of the overflow period, or is short enough that the interrupt overhead
+matters; overflow counting is fine when roughly right is right enough.
+
+Yes: 100\,ms is one. At \textdiv1024, Timer 0 overflows every 16.384\,ms, and
+$100 / 16.384 = 6.10$, so the best Normal mode can do is 6 overflows, 98.304\,ms, 1.7\,\% short.
+Timer 1 in CTC with \code{OCR1A = 1562} gives $1563 \times 64\,\text{\textmu s} = 100.032$\,ms,
+0.03\,\% off. A period that is a whole number of ticks is hit exactly: the 2\,s of
+Exercise~\ref{c5:ex:6} is 31,250 ticks.
+
+\answer{c5:ex:4}
+Only \code{TIMEOUT_MS} changes, from \code{500U} to \code{250U}: 2\,Hz is one on/off cycle every
+500\,ms, so the LED must toggle every 250\,ms. The prescaler, \code{TICK_PERIOD_MS},
+\code{TICK_MAX}, \code{OVF_PERIOD_MS} and the ISR all stay as they are, and \code{OVF_MAX} follows
+from the macro:
+\[
+  \text{\code{OVF_MAX}} = \left\lfloor \frac{250}{0.064 \times 256} + 0.5 \right\rfloor
+    = \lfloor 15.26 + 0.5 \rfloor = 15.
+\]
+Check: $15 \times 16.384\,\text{ms} = 245.76$\,ms per toggle, a 491.52\,ms period, so the LED
+blinks at 2.03\,Hz. (16 overflows would give 262.144\,ms, further from 250.)
+
+\answer{c5:ex:5}
+\textbf{Inside the ISR.} \code{ovf_count} is a \code{static} local of the ISR, so no other code can
+even name it, and on the AVR the ISR runs to completion with interrupts disabled, so nothing can
+change it between two of the ISR's own accesses. The compiler sees every access in one function
+body. It still has to load the value when the ISR starts and store it before the ISR returns,
+because a \code{static} outlives the call, and between those two points whatever it keeps in a
+register is correct. \code{volatile} only forbids optimizations that are already safe here, so
+removing it changes nothing about what the program does.
+
+\textbf{Waited on from \code{main()}.} Now the loop \code{while (10U > ovf_count) {}} reads the
+variable, and its body neither writes it nor calls anything. Without \code{volatile}, the compiler
+may assume nothing else writes it either: it has no idea that an ISR exists. It is allowed to read
+\code{ovf_count} once, before the loop, and test that register copy forever; if the first read is
+below 10, \code{main()} hangs in an endless loop while the ISR keeps incrementing the variable in
+memory. Whether that happens depends on the build, not on the code: at \code{-O0} every access is
+compiled as a load from memory and the loop works, while with optimization, as at the \code{-Os}
+the book builds with, avr-gcc hoists the load out of the loop and it hangs. A different compiler
+version, a change in inlining, or a function call added to the loop body can each make the bug
+appear or disappear again. \code{volatile} makes every test of \code{ovf_count} in the loop a fresh
+read from memory.
+
+\answer{c5:ex:6}
+The number of ticks in 2\,s, less one, because the counter takes $\text{\code{OCR1A}} + 1$
+ticks to reach the compare value:
+\[
+  \text{ticks} = \frac{2000\,\text{ms}}{0.064\,\text{ms}} = 31\,250,
+  \qquad
+  \text{\code{OCR1A}} = 31\,250 - 1 = 31\,249.
+\]
+It fits: Timer 1 is 16-bit, so \code{OCR1A} holds up to 65,535, while an 8-bit timer's 255 could
+not. Check: $(31\,249 + 1) \times 64\,\text{\textmu s} = 2.000$\,s exactly, since 16\,MHz divided by
+1024 is exactly 15,625 ticks per second. The chapter's macros agree, and show why they round: in
+\code{float} arithmetic \code{2000U / 0.064F - 1U} comes to 31248.998, which a plain cast would
+truncate to 31248; adding 0.5 first gives 31249.

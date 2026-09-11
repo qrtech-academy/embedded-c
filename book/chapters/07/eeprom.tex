@@ -1,0 +1,176 @@
+% Section 7.1, from lectures/L07/appendix/a_eeprom.md.
+
+\section{EEPROM}
+\label{c7:sec:eeprom}\label{c7:app:a}
+
+\subsection{EEPROM: what it is and why}
+\label{c7:a:1}
+\begin{itemize}
+  \item RAM forgets everything the instant power is removed. EEPROM (Electrically Erasable
+    Programmable ROM) doesn't: it's a separate, much smaller memory that keeps its contents across
+    a reset or power loss, useful for settings, calibration values, or a counter that should survive
+    being unplugged.
+  \item The ATmega328P has 1024 bytes of EEPROM, addressed \code{0}--\code{1023}, entirely separate
+    from flash (where your program lives) and RAM (where your variables live).
+  \item Two costs come with that durability: a single byte write takes a few milliseconds
+    (eternity, compared to a RAM write), and each EEPROM cell only tolerates roughly 100,000 write
+    cycles before it wears out. Don't write to EEPROM in a tight loop or once per iteration of
+    \code{main()}; write only when a value actually needs to persist.
+\end{itemize}
+
+\subsection{EEPROM registers}
+\label{c7:a:2}
+Three registers, all specific to the EEPROM peripheral:
+\begin{enumerate}
+  \item \textbf{\code{EEAR}} (EEPROM Address Register) holds the address, \code{0}--\code{1023}, to
+    read from or write to.
+  \item \textbf{\code{EEDR}} (EEPROM Data Register) holds the byte being written, or receives the
+    byte just read.
+  \item \textbf{\code{EECR}} (EEPROM Control Register) controls and reports on the read/write
+    process:
+  \begin{itemize}
+    \item \code{EERE} (EEPROM Read Enable) starts a read.
+    \item \code{EEMPE} (EEPROM Master Write Enable) must be set immediately before \code{EEPE},
+      it's a safety interlock, not a data bit.
+    \item \code{EEPE} (EEPROM Write Enable) starts a write, and stays set until the write
+      completes; a new write must wait for it to clear first.
+  \end{itemize}
+\end{enumerate}
+The datasheet requires \code{EEPE} to be set within four CPU cycles of \code{EEMPE} being set, or
+the write silently doesn't happen at all. An interrupt firing in that window is a real risk (a few
+cycles is nothing), so a write disables interrupts for the handful of instructions between the
+two:
+
+\begin{ccode}
+while (EECR & (1U << EEPE)) {} // Wait for any earlier write to finish.
+
+EEAR = addr; // Set destination address (0-1023).
+EEDR = byte; // Set data to write (one byte).
+
+cli();                 // Disable interrupts during the write sequence.
+EECR |= (1U << EEMPE); // EEMPE must be followed by EEPE within 4 cycles.
+EECR |= (1U << EEPE);
+sei();                 // Re-enable interrupts once the write sequence is complete.
+\end{ccode}
+
+\noindent Reading doesn't have this timing constraint, no write is happening, so there's no
+equivalent interlock, just the same ``wait for the peripheral to be free'' pattern already familiar
+from \code{ADIF} (Chapter~\ref{c4:ch}) and \code{UDRE0} (Chapter~\ref{c6:ch}):
+
+\begin{ccode}
+while (EECR & (1U << EEPE)) {} // Wait for any earlier write to finish.
+EEAR = addr;                   // Set the address to read from.
+EECR |= (1U << EERE);          // Start read operation.
+return EEDR;                   // Return the byte at the specified address.
+\end{ccode}
+
+\subsection{\code{eeprom_write_byte()} / \code{eeprom_read_byte()}}
+\label{c7:a:3}
+
+\begin{ccode}
+#include <stdint.h>
+
+#include <avr/interrupt.h>
+#include <avr/io.h>
+
+/**
+ * @brief Write a byte to EEPROM at the given address.
+ *
+ * @param[in] addr EEPROM address to write to (0-1023).
+ * @param[in] byte Byte to write.
+ */
+static void eeprom_write_byte(const uint16_t addr, const uint8_t byte)
+{
+    // Wait for any earlier write to finish.
+    while (EECR & (1U << EEPE)) {}
+
+    // Set destination address and data.
+    EEAR = addr;
+    EEDR = byte;
+
+    // Perform write operation.
+    cli();
+    EECR |= (1U << EEMPE);
+    EECR |= (1U << EEPE);
+    sei();
+}
+
+/**
+ * @brief Read a byte from EEPROM at the given address.
+ *
+ * @param[in] addr EEPROM address to read from (0-1023).
+ *
+ * @return Byte stored at that address.
+ */
+static uint8_t eeprom_read_byte(const uint16_t addr)
+{
+    // Wait for any earlier write to finish.
+    while (EECR & (1U << EEPE)) {}
+
+    // Set address to read from.
+    EEAR = addr;
+
+    // Start read operation.
+    EECR |= (1U << EERE);
+
+    // Return the byte stored at the given address.
+    return EEDR;
+}
+\end{ccode}
+
+\subsection{Worked example: persisting LED1's state across resets}
+\label{c7:a:4}
+Extends \secref{c6:a:6}'s button-toggle-report demo: LED1's state now survives a reset or power
+cycle, read back from EEPROM in \code{setup()} and written back out every time it changes. The
+circuit is the one of Figure~\ref{c6:fig:serial}, unchanged.
+
+\begin{console}
+eeprom_driver_demo/
+├── Makefile
+├── main.c
+├── include/
+│   └── driver/
+│       ├── eeprom.h
+│       └── serial.h
+└── source/
+    └── driver/
+        ├── eeprom.c
+        └── serial.c
+\end{console}
+
+\noindent The driver files (\file{driver/eeprom.h} and \file{driver/eeprom.c}, both printed in full
+below) wrap \secref{c7:a:3}'s \code{eeprom_write_byte()}/\code{eeprom_read_byte()} behind a
+buffer-and-length interface, \code{eeprom_write()}/\code{eeprom_read()}, the same shape as
+Chapter~\ref{c6:ch}'s \code{serial_write()}. \code{main.c} in full follows them.
+
+\subsubsection{The driver in full}
+\cfile{lectures/L07/eeprom_driver_demo/include/driver/eeprom.h}
+\needspace{8\baselineskip}
+\cfile{lectures/L07/eeprom_driver_demo/source/driver/eeprom.c}
+
+\subsubsection{The program}
+\cfile{lectures/L07/eeprom_driver_demo/main.c}
+
+\noindent\code{ISR(PCINT0_vect)} only toggles LED1 and sets \code{led1_event}; the EEPROM write and
+the UART report both happen in \code{main()}'s loop instead, once per event, never inside the ISR
+itself. That's deliberate, not incidental, and it's good practice generally: both
+\code{eeprom_write()} (which can block for several milliseconds waiting on \code{EECR}'s
+\code{EEPE} bit, \secref{c7:a:2}) and \code{serial_print()} (which blocks byte-by-byte on
+\code{UDRE0}) are slow, blocking calls, and an ISR that spends milliseconds inside either one holds
+up every other interrupt for that whole time, including the debounce timer this very feature
+depends on. Keep ISRs to the minimum work needed (flip a pin, set a flag) and let \code{main()}'s
+loop handle anything that can block, the same reasoning \secref{c6:a:6} gave for never calling
+\code{serial_print()} from an ISR.
+
+\subsubsection{Building and running}
+Build and flash the same way as \secref{c6:a:6}: on Linux, run \code{make} in the demo's
+directory, \file{lectures/L07/eeprom_driver_demo} (\code{make flash} to program the board); on
+Windows via Microchip Studio, recreate this folder structure inside the project and add
+\file{include} as an include directory. The demo's \file{Makefile} is the one printed in
+\secref{c6:sec:build}, with the EEPROM driver added to its source files:
+
+\begin{makecode}
+SRC_FILES := main.c \
+             source/driver/eeprom.c \
+             source/driver/serial.c \
+\end{makecode}

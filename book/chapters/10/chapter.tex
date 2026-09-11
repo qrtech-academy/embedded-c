@@ -1,0 +1,46 @@
+% Chapter 10, typeset from lectures/L10: the README is the opener and the closing review, the
+% lecture's Appendix A is a section with the same subsections, and its Appendix B, the exercises,
+% closes the chapter. The three demos are typeset straight from their files in §10.1.2, §10.1.5 and
+% §10.1.6.
+
+\chapter{Encapsulation and Polymorphism in C}
+\label{c10:ch}
+
+{\large\itshape Hiding what a driver is made of, and letting one call reach different code.\par}
+
+\begin{chapterbox}{In this chapter}
+\begin{itemize}
+  \item Hiding functions with \code{static}, and storing function pointers directly on an
+    otherwise still public \code{gpio_t}, before tackling the struct's fields.
+  \item Why exposing every struct field lets callers break invariants, and how an opaque struct
+    (forward-declared in a header, defined only in a \file{.c} file) prevents that.
+  \item Function pointers: syntax, storing one in a struct, calling through it.
+  \item Worked example: an interrupt-driven \code{gpio_t} that dispatches a stored callback from
+    \code{main()}'s loop, an ISR only flags that an event occurred.
+  \item Vtables: a struct of function pointers as a hand-written interface, and how it relates to
+    what C++'s \code{virtual} does under the hood.
+  \item Worked example: a \code{gpio_interface_t} interface that real ATmega328P hardware sits
+    behind, alongside a swappable in-memory stub for testing without a chip attached.
+\end{itemize}
+\end{chapterbox}
+
+Chapter~\ref{c9:ch}'s drivers were structs with every field in plain view and one set of functions
+per driver. This chapter takes the same GPIO driver further, towards what an object-oriented
+language would give you for free. After it you should be able to explain how \code{static}
+restricts a function's visibility to its own file, and why that's a different kind of
+encapsulation than hiding struct fields; explain what an opaque struct is and why hiding a struct's
+definition in a \file{.c} file protects its invariants; declare, assign, and call through a
+function pointer, including one stored in a struct field; design a small vtable-style interface
+and provide more than one implementation of it; and understand, at a high level, how this manual
+pattern relates to virtual dispatch in higher-level languages.
+
+The chapter assumes Chapter~\ref{c9:ch}'s \code{gpio_t} driver and \code{timer_t} struct
+(Exercise~\ref{c9:ex:6}), plus the function pointer syntax of \secref{c1:a:8}. Read
+\secref{c10:sec:encapsulation}, the substance of the chapter, in order: each of its three demos
+builds on what came before it. Then work the exercises in \secref{c10:sec:exercises}. The
+Reflection exercises are answered in Appendix~\ref{app:answers}; the Code exercises have no
+printed solution.
+
+\input{chapters/10/encapsulation}
+\input{chapters/10/summary}
+\input{chapters/10/exercises}

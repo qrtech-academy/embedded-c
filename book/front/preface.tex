@@ -1,0 +1,184 @@
+% Preface: the README's About, During the Course, Learning Outcomes, Written Papers and No Hardware
+% Yet sections, and the course plan and software list from info/README.md, as the front matter of
+% a book.
+
+\chapter{Preface}
+\markboth{Preface}{Preface}
+
+This book is for junior embedded developers, and for developers with some programming experience
+who want to learn embedded systems programming. It teaches embedded development in C on one real
+target, the ATmega328P, the microcontroller on the Arduino Uno and Nano, and it goes from the C
+language itself, through registers, interrupts and interrupt-driven peripheral drivers, to
+hand-written encapsulation and polymorphism.
+
+The topics, in the order the book takes them:
+\begin{itemize}
+  \item A C fundamentals refresher: structs, pointers, function pointers, dynamic memory, macros.
+  \item Register-level I/O: bitwise operations, \code{DDRx}/\code{PORTx}/\code{PINx}.
+  \item Interrupts: external interrupts and pin change interrupts.
+  \item Analog-to-digital conversion (ADC).
+  \item Timers: prescalers, Normal and CTC modes, non-blocking timing.
+  \item Serial communication (UART).
+  \item EEPROM: persisting state across resets.
+  \item The watchdog timer.
+  \item Structs as drivers: bundling state for peripherals with multiple instances.
+  \item Encapsulation and polymorphism in C: opaque structs, function pointers in structs, and
+    hand-written vtables.
+\end{itemize}
+
+Unlike a general C text, every chapter builds toward that one target, and every worked example is a
+real program, compiled and flashed to actual hardware rather than simulated. The book ends where
+\emph{Modern Embedded C++}, a separate follow-on course and book, begins.
+
+\textbf{Along the way you will build circuits and write programs for them, not just read about
+them.} You will:
+\begin{itemize}
+  \item Wire and program real circuits (LEDs, buttons, potentiometers) on an Arduino Uno or Nano.
+  \item Write drivers directly against the ATmega328P's registers and datasheet.
+  \item Move from polling to interrupt-driven, non-blocking designs.
+  \item Bundle a peripheral's state into a struct to support multiple instances.
+  \item Refactor a driver from a plain struct into an opaque type, then into a hand-written
+    interface with multiple implementations.
+\end{itemize}
+The examples and exercises stay close to typical embedded problems:
+\begin{itemize}
+  \item Digital I/O and debounced button input.
+  \item Timer-driven, non-blocking LED patterns.
+  \item Serial reporting of sensor readings.
+  \item Persisting state to EEPROM across resets.
+  \item A GPIO driver evolving from a public struct, to an opaque type, to a vtable-based
+    interface.
+\end{itemize}
+
+\section*{What you should be able to do at the end}
+Having worked through the book, you should be able to:
+\begin{itemize}
+  \item Write and debug C code directly against a microcontroller's registers and datasheet.
+  \item Move from blocking, polling-based designs to interrupt-driven, non-blocking ones.
+  \item Keep interrupt handlers safe by flagging events in the ISR and handling them in
+    \code{main()}.
+  \item Bundle a peripheral's state into a struct to support several instances of the same
+    peripheral.
+  \item Split a driver across a header and source file, and use opacity to protect its invariants.
+  \item Store and call through function pointers, including as struct members.
+  \item Understand, and hand-implement, the vtable mechanism C++ uses for virtual dispatch.
+  \item Move directly on to \emph{Modern Embedded C++}.
+\end{itemize}
+
+\section*{What you are assumed to know}
+You are expected to be able to program already, in C or in another language. Chapter~1 is a
+fast-moving refresher on C for programmers, not a first course in programming: it covers the syntax
+quickly and slows down only where C differs from the languages you may know, above all at pointers.
+Nothing about embedded systems or electronics is assumed beyond knowing what an LED, a button and a
+resistor are. Everything else, from what a register is onwards, is taught from the beginning.
+
+\section*{How the book is organised}
+The book is typeset from a ten-lecture course, and each chapter is one lecture. Its sections are the
+lecture's appendices, with the same numbered subsections, so a chapter here and a lecture directory
+in the repository can be read side by side: the lecture's Appendix~A.7 is a chapter's first section,
+subsection~7.
+
+\begin{booktable}{@{}p{5.2em}p{3.6em}L@{}}
+  \thead{Chapter} & \thead{Lecture} & \thead{Topic} \\
+  \midrule
+  1 & \file{L01} & C fundamentals refresher \\
+  2 & \file{L02} & Registers and I/O \\
+  3 & \file{L03} & Interrupts \\
+  4 & \file{L04} & Analog-to-digital conversion (ADC) \\
+  5 & \file{L05} & Timers \\
+  6 & \file{L06} & Serial communication (UART) \\
+  7 & \file{L07} & EEPROM \\
+  8 & \file{L08} & The watchdog timer \\
+  9 & \file{L09} & Structs as drivers \\
+  10 & \file{L10} & Encapsulation and polymorphism in C \\
+\end{booktable}
+
+Chapters~1 to~6 are the introductory arc: the language, digital I/O, reacting to events, reading
+the analog world, timing without blocking, and reporting back to a PC. Chapters~7 and~8 complete
+the survey of peripherals with the two the chip has exactly one of, and Chapters~9 and~10 are about
+driver design, built on everything before them.
+
+Every chapter opens with what is in it, works through the material, closes with a review of what
+you should now be able to explain, and ends with its exercises. The appendices hold the guide to
+running the demos in a simulator, the answers to the exercises that have one right answer, and the
+two written papers described below.
+
+\section*{What the exercises look like}
+The exercises come in \textbf{sets}, grouped the way the lecture groups them: questions about the
+concepts first, then programs. Every exercise is labelled with its kind:
+
+\begin{booktable}{@{}p{7.4em}L@{}}
+  \thead{Kind} & \thead{What it asks of you} \\
+  \midrule
+  \kindtag[fillaccent2]{Reflection} & Answer in prose: explain what the code does, why it is
+    written the way it is, or why one design is better than another. \\
+  \kindtag[fillaccent3]{Calculation} & Work a number out on paper: a voltage, a tick period, a
+    register value. \\
+  \kindtag{Code} & Write a program, build it, and run it on the board, or in the simulator where
+    there is no board. \\
+\end{booktable}
+
+\textbf{The Reflection and Calculation exercises are answered in Appendix~\ref{app:answers}},
+chapter by chapter, calculations with their working. \textbf{The Code exercises have no printed
+solution.} Each is a program that either does what the exercise describes on the board or does not,
+and the board is how you check it. Some Code exercises also ask a question about the design they
+make you write; the appendix answers those questions, but not with code. Try each exercise before
+you read its answer.
+
+\section*{Two written papers, and what they are not}
+Nothing in the course this book comes from is marked. Assessment is the exercise set after every
+chapter, and the questions in every chapter's review.
+
+Appendices~\ref{exam:ch:about} to \ref{ansb:ch:answers} hold two three-hour papers with worked
+solutions, and they check something else: \textbf{what you can reconstruct on paper, with nothing
+in front of you.} Eight questions each, mixing theory with C you either read and repair or write
+from scratch, and no compiler, datasheet or board in the room to tell you which it is.
+
+\textbf{They exist purely so that you can test your own knowledge after working through the book.
+They gate nothing, they are not a qualification, and no part of the book requires them.}
+
+\textbf{Take one after the last chapter.} Both papers draw on all ten chapters, so sitting one
+partway through examines material you have not read yet.
+
+\section*{What you need}
+Every worked example in this book runs on one board, and you need one to follow it the way it is
+written:
+\begin{itemize}
+  \item \textbf{An Arduino Uno or Nano.} Either works: the same ATmega328P, the same registers, the
+    same pin numbering. \Secref{c2:a:2} compares the two.
+  \item \textbf{A breadboard and a handful of parts}: LEDs with 220--470\,\textohm{} series
+    resistors, push buttons with 10\,k\textohm{} pull-down resistors, a potentiometer for
+    Chapter~4, and jumper wires. Chapter~6's last exercise adds a TMP36 temperature sensor.
+\end{itemize}
+And the software to build and flash programs for it, on either of two paths:
+\begin{itemize}
+  \item \textbf{On Windows, Microchip Studio}, the IDE for writing and building the examples, with
+    the Arduino IDE used once to borrow the command that flashes the board. \Secref{c2:app:c} walks
+    through it.
+  \item \textbf{On Linux, or on Windows through WSL}, the AVR toolchain itself: \code{avr-gcc},
+    \code{avr-objcopy} and \code{avrdude}, used from the command line with a Makefile.
+    \Secref{c2:app:d} walks through it.
+\end{itemize}
+The companion repository holds the lectures, the worked demos and everything the book is typeset
+from. Clone it:
+
+\begin{shell}
+git clone https://github.com/qrtech-academy/embedded-c.git
+\end{shell}
+
+\noindent Two commands at its root cover everything the book asks of it on Linux:
+
+\begin{shell}
+make build               # Build every demo, one project directory at a time.
+make format-check        # Check the formatting of every C file.
+\end{shell}
+
+\noindent Each demo directory also builds on its own, and flashes the board with \code{make flash};
+Chapter~6 shows the layout they all share.
+
+\section*{No hardware yet?}
+Every worked demo can also be run on your own computer, under the simavr simulator, including its
+serial output, button presses, EEPROM that survives a restart, and debugging with \code{avr-gdb}.
+Appendix~\ref{sim:ch} shows how. It is a way to keep moving until you have a board, not a
+replacement for one: a simulator will not teach you what a floating input, a missing pull-up or a
+badly seated jumper wire feels like. Get a board when you can.

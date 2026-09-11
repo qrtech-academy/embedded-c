@@ -1,0 +1,39 @@
+% Section 5.2, from lectures/L05/README.md: the goals, the evaluation questions, and the next
+% lecture.
+
+\section{Review}
+\label{c5:sec:review}
+
+\needspace{6\baselineskip}
+\subsection*{What you should be able to do now}
+After this chapter, you should:
+\begin{itemize}
+  \item Explain why a busy-wait delay (\code{_delay_ms}) is unsuitable once a program needs to do
+    more than one thing at a time.
+  \item Be able to compute a timer's tick period from the CPU clock and a chosen prescaler.
+  \item Be able to work out how many overflow interrupts are needed for a given delay, for an
+    8-bit timer.
+  \item Understand the practical difference between Normal Mode and CTC Mode, and when you'd reach
+    for each.
+  \item Know why a variable shared between an ISR and \code{main()} needs to be declared
+    \code{volatile}.
+\end{itemize}
+
+\needspace{6\baselineskip}
+\subsection*{Questions to test yourself}
+You should be able to answer:
+\begin{enumerate}
+  \item At 16\,MHz with a \textdiv256 prescaler, what's the resulting tick period?
+  \item What's the difference between what triggers \code{TIMERn_OVF_vect} and what triggers
+    \code{TIMERn_COMPA_vect}?
+  \item Why is \code{volatile} optional on \code{ovf_count} in the Timer 0 example, and when does a
+    variable shared with an ISR genuinely need it?
+\end{enumerate}
+
+\needspace{6\baselineskip}
+\subsection*{Looking ahead}
+Chapter~\ref{c6:ch} is about serial communication:
+\begin{itemize}
+  \item Serial communication (UART): transmitting data to a PC instead of only driving LEDs.
+  \item Combining timers with UART to report readings periodically.
+\end{itemize}

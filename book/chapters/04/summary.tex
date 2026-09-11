@@ -1,0 +1,36 @@
+% Section 4.2, from lectures/L04/README.md: the goals, the evaluation questions, and the next
+% lecture.
+
+\section{Review}
+\label{c4:sec:review}
+
+\needspace{6\baselineskip}
+\subsection*{What you should be able to do now}
+After this chapter, you should:
+\begin{itemize}
+  \item Explain what an ADC does and why its result is a discrete number, not a continuous value.
+  \item Be able to compute the voltage a given ADC reading corresponds to, and vice versa.
+  \item Be able to configure and read from a chosen ADC channel.
+  \item Understand why the ADC needs its own clock prescaler, separate from the CPU clock.
+\end{itemize}
+
+\needspace{6\baselineskip}
+\subsection*{Questions to test yourself}
+You should be able to answer:
+\begin{enumerate}
+  \item At a 5\,V reference, what analog voltage does an ADC reading of \code{0}, \code{511}, and
+    \code{1023} each correspond to?
+  \item Why does the code wait on the \code{ADIF} flag instead of reading \code{ADC} immediately
+    after starting a conversion?
+  \item What is ``duty cycle,'' and how does the software-PWM example use it to control perceived
+    LED brightness?
+\end{enumerate}
+
+\needspace{6\baselineskip}
+\subsection*{Looking ahead}
+Chapter~\ref{c5:ch} is about timers:
+\begin{itemize}
+  \item Timers: replacing blocking \code{_delay_ms()} calls with non-blocking, interrupt-driven
+    timing.
+  \item Normal Mode vs.\ CTC Mode, and the prescaler math behind both.
+\end{itemize}

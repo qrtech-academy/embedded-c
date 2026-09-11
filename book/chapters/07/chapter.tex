@@ -1,0 +1,38 @@
+% Chapter 7, typeset from lectures/L07: the README is the opener and the closing review, the
+% lecture's Appendix A is a section with the same subsections, and its Appendix B, the exercises,
+% closes the chapter. The eeprom_driver_demo is typeset straight from its files in §7.1.4.
+
+\chapter{EEPROM}
+\label{c7:ch}
+
+{\large\itshape Memory that survives a reset, and costs milliseconds and wear to write.\par}
+
+\begin{chapterbox}{In this chapter}
+\begin{itemize}
+  \item EEPROM: non-volatile storage that survives a power cycle or reset, and why it's slow and
+    wear-limited compared to RAM.
+  \item EEPROM registers: \code{EEAR}, \code{EEDR}, \code{EECR}, and the timed write sequence
+    (\code{EEMPE} then \code{EEPE}).
+  \item \code{eeprom_write_byte()} / \code{eeprom_read_byte()}, and why interrupts are disabled
+    around a write.
+  \item Why a plain function is the right tool here: there's exactly one EEPROM on the chip.
+  \item Worked example: persisting LED1's state across resets, and why the EEPROM write and UART
+    report both happen in \code{main()}, never inside an ISR.
+\end{itemize}
+\end{chapterbox}
+
+This chapter is about the one memory on the chip that keeps its contents when the power goes.
+After it you should be able to explain what EEPROM is for and why it's unsuitable for data that
+changes every loop iteration, read from and write to EEPROM at a given address, explain why the
+EEPROM's write sequence disables interrupts and what could go wrong if it didn't, and explain why
+slow, blocking calls like \code{eeprom_write()} and \code{serial_print()} don't belong inside an
+ISR.
+
+Read \secref{c7:sec:eeprom}, the substance of the chapter; its worked example extends the serial
+demo of \secref{c6:a:6}. Then work the exercises in \secref{c7:sec:exercises}. The Reflection
+exercises, and the question the Code exercise asks, are answered in Appendix~\ref{app:answers};
+the Code exercise has no printed solution.
+
+\input{chapters/07/eeprom}
+\input{chapters/07/summary}
+\input{chapters/07/exercises}

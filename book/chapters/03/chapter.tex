@@ -1,0 +1,37 @@
+% Chapter 3, typeset from lectures/L03: the README is the opener and the closing review, the
+% lecture's Appendix A is the chapter's one section of material, and Appendix B its exercises.
+
+\chapter{Interrupts}
+\label{c3:ch}
+
+{\large\itshape Letting the hardware say when something has happened, instead of asking it over
+and over.\par}
+
+\begin{chapterbox}{In this chapter}
+\begin{itemize}
+  \item Why polling doesn't scale, and what an interrupt actually is.
+  \item External interrupts: INT0/INT1 (\code{SREG}, \code{EICRA}, \code{EIMSK}), edge selection,
+    and the \code{ISR}/vector mechanism.
+  \item Worked example: toggle an LED via INT0.
+  \item Worked example: blink an LED via INT1.
+  \item Pin Change Interrupts (PCI): any other pin, at the cost of per-port grouping and
+    both-edges triggering.
+  \item Worked example: toggle an LED via a PCI interrupt, and the general pattern for any port.
+  \item When to reach for INT0/INT1 versus PCI.
+\end{itemize}
+\end{chapterbox}
+
+Every input the book has read so far has been polled. This chapter is about the alternative: why
+interrupts exist, and what problem they solve compared to polling. You will configure an external
+interrupt, INT0 or INT1, for a specific edge and write its ISR; configure a Pin Change Interrupt on
+an arbitrary pin, including working out the correct \code{PCINTx} number; and see why PCI
+interrupts fire on both edges, and how to filter for the one you care about.
+
+Read \secref{c3:sec:interrupts} first: it is the chapter's core material, with its worked
+examples. Then work the exercises in \secref{c3:sec:exercises}. The Reflection and Calculation
+exercises are answered in Appendix~\ref{app:answers}; the Code exercises have no printed solution,
+because the board tells you whether a program does what the exercise asks.
+
+\input{chapters/03/interrupts}
+\input{chapters/03/summary}
+\input{chapters/03/exercises}

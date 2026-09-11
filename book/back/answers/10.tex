@@ -1,0 +1,42 @@
+% Answers to Chapter 10's exercises, lectures/L10/appendix/b_exercises.md. The book's own answers:
+% the lecture publishes none. Exercises 10.3 to 10.6 are Code exercises and ask no question about
+% their design, so only the two Reflection exercises are answered.
+\answerchapter{10}{Encapsulation and Polymorphism in C}
+
+\answer{c10:ex:1}
+Because a forward declaration makes \code{gpio_t} an incomplete type everywhere outside
+\file{gpio.c}. Calling code can hold a \code{gpio_t*}, pass it around and hand it to the driver's
+functions, but it cannot name a field, take \code{sizeof(gpio_t)}, or declare a \code{gpio_t} of
+its own. The only way to get an instance is \code{gpio_create()}, and the only way to change one
+is through the driver's functions, so the invariants those functions maintain (register pointers
+that belong together, a bit position in range, the direction the pin was configured with) cannot
+be broken from outside.
+
+With \code{struct gpio { ... };} in the header, every file that includes it sees the fields, and
+that protection is gone:
+\begin{itemize}
+  \item Calling code can read and write \code{pin}, \code{ddrx} and the rest directly, for example
+    point an instance at another port's registers, bypassing every check the driver makes.
+  \item It can declare its own \code{gpio_t}, as a local or a global, that never went through
+    \code{gpio_create()}: an instance whose register pointers are garbage or null, which the
+    driver's functions then dereference.
+  \item It can come to depend on the layout, so changing a field means recompiling, and possibly
+    rewriting, every file that uses the driver.
+\end{itemize}
+Encapsulation is then back to being a convention, as it is for Chapter~\ref{c9:ch}'s
+\code{gpio_t} and \secref{c10:a:2}'s.
+
+\answer{c10:ex:2}
+Returning \code{NULL} makes the failure visible and unambiguous: there is no new GPIO, and the
+caller is told so. Handing back the first GPIO instead would hide the failure. The caller would
+believe it had a fresh instance for its own pin while holding a second pointer to an object that
+another part of the program still uses, and whatever it then did to ``its'' GPIO (configure it as
+an input, write to it, free it) would silently change the first one under its owner, a bug that
+shows up far from its cause. As \secref{c10:a:3} says, \code{NULL} is the caller's only signal that
+the heap ran out.
+
+Calling code must compare the result with \code{NULL} before using it, and deal with the failure
+there and then rather than store the pointer and carry on: report it and give up on that part of
+the setup, typically by returning an error, as the chapter's demos do when \code{main()} returns
+\code{-1}. An unchecked \code{NULL} does not even crash: \secref{c10:a:3}'s functions check
+\code{NULL == self} and quietly do nothing, so the program runs but that pin never works.

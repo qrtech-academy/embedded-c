@@ -1,0 +1,35 @@
+% Section 7.2, from lectures/L07/README.md: the goals, the evaluation questions, and the next
+% lecture.
+
+\needspace{12\baselineskip}
+\section{Review}
+\label{c7:sec:review}
+
+\needspace{6\baselineskip}
+\subsection*{What you should be able to do now}
+After this chapter, you should be able to:
+\begin{itemize}
+  \item Explain what EEPROM is for and why it's unsuitable for data that changes every loop
+    iteration.
+  \item Read from and write to EEPROM at a given address.
+  \item Explain why EEPROM's write sequence disables interrupts, and what could go wrong if it
+    didn't.
+  \item Explain why slow, blocking calls like \code{eeprom_write()} and \code{serial_print()}
+    don't belong inside an ISR.
+\end{itemize}
+
+\needspace{6\baselineskip}
+\subsection*{Questions to test yourself}
+\begin{enumerate}
+  \item Why does \code{eeprom_write_byte()} wait on the \code{EEPE} flag before starting a new
+    write?
+  \item What real AVR datasheet requirement forces \code{EEMPE} to be followed by \code{EEPE}
+    within 4 clock cycles, and why does the example disable interrupts for that window?
+  \item In \secref{c7:a:4}'s worked example, why does \code{ISR(PCINT0_vect)} only toggle LED1 and
+    set a flag, leaving the actual \code{eeprom_write()} and UART report to \code{main()}?
+\end{enumerate}
+
+\needspace{6\baselineskip}
+\subsection*{Looking ahead}
+Chapter~\ref{c8:ch} is about the watchdog timer, another peripheral the chip has exactly one of,
+and a hardware safety net against a program that hangs.

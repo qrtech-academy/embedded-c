@@ -1,0 +1,41 @@
+% Chapter 2, typeset from lectures/L02: the README is the opener and the closing review, and the
+% appendices are sections, with the same subsections: A, then the two toolchain walkthroughs C and
+% D, then the review, and the exercises of Appendix B last.
+
+\chapter[Hardware-Near Programming in C]{Hardware-Near Programming\\in C}
+\label{c2:ch}
+
+{\large\itshape No OS between you and the pins, only registers and the bits in them.\par}
+
+\begin{chapterbox}{In this chapter}
+\begin{itemize}
+  \item Introduction: what's different about programming a microcontroller versus a normal
+    computer.
+  \item The board: Arduino Uno/Nano / ATmega328P, I/O ports and PIN$\leftrightarrow$PORT mapping.
+  \item Bitwise operations: OR, AND, NOT, shifting, how register-level I/O actually works.
+  \item Driving an output pin and reading an input pin (\code{DDRx}, \code{PORTx}, \code{PINx}).
+  \item Two worked examples: LED follows a button; two LEDs blink while a button is held.
+\end{itemize}
+\end{chapterbox}
+
+This chapter is where the book meets the hardware. It explains why embedded systems are programmed
+close to the hardware, in C, without an OS underneath, and it teaches the one skill everything after
+it is built on: reading and writing bitwise operations (\code{|}, \code{&}, \code{~}, \code{<<},
+\code{>>}) to set, clear, and read individual bits in a register, so that you can configure a pin as
+an input or an output and drive or read it correctly.
+
+Read \secref{c2:sec:registers} first; it is the chapter's core material. The two sections after it
+are for reference, and one of them is where you set up the toolchain the rest of the book uses:
+\secref{c2:app:c} walks through flashing a Microchip Studio build onto the board via the Arduino
+bootloader and \code{avrdude}, useful if you don't have a dedicated ISP programmer, and
+\secref{c2:app:d} is the same idea from native Linux: installing \code{avr-gcc}/\code{avrdude},
+compiling from the command line, and flashing over serial, including WSL2's USB-passthrough step.
+Then work through the exercises in \secref{c2:sec:exercises}. The Reflection exercise is answered in
+Appendix~\ref{app:answers}, and so are the values the expressions of Exercise~\ref{c2:ex:1} should
+produce; the Code exercises have no printed solution.
+
+\input{chapters/02/registers}
+\input{chapters/02/studio}
+\input{chapters/02/linux}
+\input{chapters/02/summary}
+\input{chapters/02/exercises}

@@ -1,0 +1,462 @@
+% Appendix, from exam/paper_b.md: Paper B, the questions and the register reference the candidate
+% may consult. The model answers are a separate appendix, as they are a separate file, so the paper
+% can be sat without them in view.
+
+\chapter{Self-Assessment Paper B}
+\label{exb:ch:paper}
+
+\noindent\textbf{Time:} 3 hours. \textbf{Closed book.} No compiler and no datasheet. The register
+reference at the back of this paper is the only material you may use. \textbf{Total: 100 marks.}
+
+This paper exists to test your own skills and knowledge. It is not a qualification and it gates
+nothing. It draws on all ten chapters, so \textbf{it is meant to be taken once you have finished
+the book}. The model answers are in Appendix~\ref{ansb:ch:answers}.
+
+\section*{Rubric}
+\textbf{C11 on an ATmega328P (Arduino Uno/Nano) at 16\,MHz} is assumed throughout, built with
+\code{avr-gcc} and \code{-std=c11}. Standard and AVR headers (\code{<stdint.h>},
+\code{<stdbool.h>}, \code{<avr/io.h>}, \code{<avr/interrupt.h>}, \code{<util/delay.h>}) may be
+assumed included unless a question asks you to name them.
+
+\textbf{Register and bit names are not memory-tested.} Every register and bit this paper refers to
+is listed in the register reference at the back (page~\pageref{exb:sec:registers}), with what it
+is; consult it freely. What is marked is knowing which register to reach for and \emph{when} ---
+the ordering rules, timing rules and formulas that govern their use are deliberately left out of
+it, because those are the parts being examined. Misspelling a bit costs nothing; reaching for the
+wrong register, or the right one at the wrong moment, costs everything.
+
+\textbf{Code is marked on semantics, not on syntax.} A missing semicolon, a forgotten
+\code{#include} or a brace in the wrong column costs nothing. A missing \code{volatile} costs
+everything.
+
+\textbf{Where a question says ``in the book's style''}, it means the conventions used in the
+chapters:
+\begin{itemize}
+  \item \code{snake_case} for variables, functions and constants; \code{UPPER_CASE} for macros and
+    enum constants.
+  \item \code{static} on anything that is not part of a module's public API.
+  \item A header guard named after the file in \code{UPPER_CASE}, \code{.} replaced by \code{_},
+    trailing \code{_} (\code{driver/gpio.h} $\rightarrow$ \code{DRIVER_GPIO_H_}).
+  \item A Doxygen comment in the imperative mood above every non-trivial function.
+  \item \code{self} as the first parameter of any function operating on a driver struct, always a
+    pointer, and \code{const} when the function only reads through it.
+  \item Yoda notation on comparisons against a constant, and braces on every \code{if}, even
+    one-liners.
+  \item \code{const} on pass-by-value parameters in a function \emph{definition}, dropped from the
+    prototype.
+  \item Fixed-width types from \code{<stdint.h>}, and \code{U} suffixes on unsigned literals.
+  \item \code{volatile} on anything shared between an ISR and the rest of the program.
+\end{itemize}
+
+\textbf{Where a question asks you to write code}, Doxygen comments are marked only where the
+question says so. Everywhere else, write the code.
+
+\textbf{Where a question says ``state the consequence''}, naming the defect earns half the marks and
+saying what it does to the running program earns the other half. ``This is wrong'' scores nothing.
+
+\subsection*{Marks}
+
+\begin{narrowtable}{@{}lcccccccc@{}}
+  \thead{Question} & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 \\
+  \midrule
+  \thead{Marks} & 12 & 12 & 12 & 13 & 13 & 13 & 12 & 13 \\
+\end{narrowtable}
+
+% ------------------------------------------------------------------------------------------
+\question{Saying what you mean}{12}
+\label{exb:q:1}
+
+\qpart{a} A blink module supports four patterns: off, slow, fast, and a two-pulse heartbeat.
+
+Write, in the book's style, an enumeration \code{led_pattern_t} naming all four, and a function
+
+\begin{ccode}
+bool led_pattern_valid(led_pattern_t pattern);
+\end{ccode}
+
+\noindent that returns \code{true} only for a named member. State three concrete advantages an
+\code{enum} has over a block of \code{#define}s for this, and then state the one property a
+\code{#define} has that a \code{const uint8_t} does not, which is why this book still writes its pin
+numbers as macros. \worth{4}
+
+\qpart{b} Write a function-like macro \code{TICKS_NEEDED(timeout_ms, tick_ms)} that yields the
+number of ticks in a timeout. State the two parenthesisation rules it must obey, showing for one of
+them a call that goes wrong if the rule is broken. Then name the third macro hazard, which
+parentheses cannot fix, and state whether your macro is exposed to it, with the reason. \worth{3}
+
+\qpart{c} A host-side test harness grows a buffer as data arrives.
+
+\begin{ccode}
+typedef struct
+{
+    uint8_t* data;
+    size_t size;
+} buffer_t;
+\end{ccode}
+
+\noindent Write \code{buffer_resize(buffer_t* self, size_t size)} returning \code{0} on success and
+\code{1} on failure. It must leave \code{self} completely untouched if the allocation fails, and
+must handle a requested size of zero. State the specific mistake that a naive one-line
+\code{self->data = realloc(self->data, size);} makes, and what it costs. \worth{3}
+
+\qpart{d} A driver is split into \file{driver/serial.h} and \file{driver/serial.c}. Give the header
+guard for that header, in the book's convention, and say what it is for. Then state the ordering
+convention this book uses inside a \file{.c} file for its public functions and its \code{static}
+helpers, and the reason. \worth{2}
+
+% ------------------------------------------------------------------------------------------
+\question{Straight to the registers}{12}
+\label{exb:q:2}
+
+\qpart{a} Three LEDs are wired to D8, D9 and D10, and a button to D12 through an external
+pull-down, so the pin reads high while the button is held.
+
+Write a complete single-file program, in the book's style, that lights exactly one LED at a time in
+the order D8 $\rightarrow$ D9 $\rightarrow$ D10, advancing every 150\,ms, for as long as the button
+is held, and turns all three off the moment it is released. Use macros for the pins and for the GPIO
+operations, and a \code{delay_ms()} helper. \worth{5}
+
+\qpart{b} Give the single C expression for each of the following on a register \code{reg} and a bit
+position \code{n}: set the bit, clear the bit, test the bit, toggle it via \code{PORTx}, and toggle
+it atomically. Then state the difference between \code{DDRB = (1U << 3U);} and
+\code{DDRB |= (1U << 3U);}, and give one situation where each is the right choice. \worth{4}
+
+\qpart{c} \code{PORTx} means one thing on an output pin and something else entirely on an input
+pin. State both, and state which register must be read to get a pin's actual level.
+
+The button circuit in \secref{c2:a:4} uses an external 10\,k$\Omega$ pull-down, yet the code still
+writes \code{PORTB = (1U << BTN1);}. State what that write does, what the pin reads when idle, and
+why the write is harmless in practice but not guaranteed to be. \worth{3}
+
+% ------------------------------------------------------------------------------------------
+\question{Reacting instead of polling}{12}
+\label{exb:q:3}
+
+\qpart{a} A button is wired to D3 through an external pull-down, so a press drives the pin high. An
+LED is on D10. Every press-down must toggle the LED, and the toggle must be immune to another
+interrupt changing a different bit of the same port at the same moment.
+
+Write \code{setup()} and the interrupt handler, in the book's style, giving every register write and
+the exact vector name. State which edge you selected and why. \worth{5}
+
+\qpart{b} The button is moved from D3 to A2. State everything that changes: the enable bit, the
+mask register, the bit written into it, and the vector. Then state \textbf{two} things the handler
+must now do that the D3 version did not, and why each is forced on you rather than optional.
+\worth{4}
+
+\qpart{c} State the rule this book applies to decide what belongs inside an ISR and what belongs in
+\code{main()}'s loop. Name two specific calls from the book's own drivers that must never appear in
+an ISR, and give the concrete cost of each. Then write the three-line pattern an ISR and
+\code{main()} use to communicate instead, and say what \code{volatile} is doing in it. \worth{3}
+
+% ------------------------------------------------------------------------------------------
+\question{Reading the world, and keeping time}{13}
+\label{exb:q:4}
+
+\qpart{a} Write \code{adc_read(uint8_t channel)} in full, in the book's style, returning a 10-bit
+result. For each register you write, state in one sentence what that write is for. State what the
+÷128 prescaler is chosen to achieve and what goes wrong without it. \worth{4}
+
+\qpart{b} A 16\,MHz ATmega328P is configured with a ÷1024 prescaler, and a 250\,ms periodic event is
+required.
+\begin{enumerate}
+  \item Give the tick period and the Timer~0 overflow period.
+  \item Give the \code{OCR1A} value for a 250\,ms interrupt on Timer~1 in CTC mode, showing the
+    arithmetic, and write the three register assignments plus the vector name.
+  \item Give the number of Timer~0 overflows the same 250\,ms needs in Normal Mode, the actual
+    period that produces, and the error as a percentage.
+  \item State why Timer~0 cannot reach 250\,ms without counting overflows in software at any
+    prescaler available to it.
+\end{enumerate}
+\noindent\worth{5}
+
+\qpart{c} A potentiometer on A0 sets the brightness of an LED on D9 by software PWM over a 10\,ms
+period.
+
+Write \code{run_pwm_cycle()}, in the book's style, computing the on-time and off-time from a fresh
+ADC reading. State why the book adds \code{+ 0.5F} before the cast, what this whole approach costs
+the rest of the program, and what replaces it. \worth{4}
+
+% ------------------------------------------------------------------------------------------
+\question{A channel to the host}{13}
+\label{exb:q:5}
+
+\qpart{a} Write \file{driver/serial.h} in full, in the book's style: header guard, includes, and a
+documented prototype for each of \code{serial_init()}, \code{serial_print()} and
+\code{serial_write()} (the buffer-and-length form). Doxygen comments are marked here.
+
+Then state which functions of the driver belong in the header and which must be \code{static} in
+\file{serial.c}, with the reason, and state why a \code{const} on a by-value parameter is dropped
+from the prototype but kept in the definition. \worth{5}
+
+\qpart{b} Write \code{serial_write_byte()} and \code{serial_print()}. State what \code{UDRE0}
+signals, and why the wait on it comes before the write to \code{UDR0} rather than after. Then state
+what \code{sprintf()} is for in this context, and the one caveat \secref{c6:a:5} attaches to it on
+AVR. \worth{4}
+
+\qpart{c} A program must report an ADC reading over UART once a second while still responding to a
+debounced button on a pin-change interrupt.
+
+Describe where the \code{sprintf()} and the \code{serial_print()} calls go, and why they cannot go
+where the event is detected. Write the flag pattern that connects the two, and state exactly what
+\code{volatile} is doing. Then state why the \code{read()} of \secref{c6:a:7} takes a
+\code{timeout_ms} parameter, and what each of its three possible return values means. \worth{4}
+
+% ------------------------------------------------------------------------------------------
+\question{Surviving a power cut, and a hang}{13}
+\label{exb:q:6}
+
+\qpart{a} Write \code{eeprom_write_byte(uint16_t addr, uint8_t byte)}\newline and
+\code{eeprom_read_byte(uint16_t addr)} in full, in the book's style. For the write, explain each of
+the following in one sentence: the loop on \code{EEPE} at the top, the order of \code{EEMPE} and
+\code{EEPE}, and the \code{cli()}/\code{sei()} pair. State why the read needs no equivalent of the
+last of those. \worth{5}
+
+\qpart{b} Write the enumeration \code{watchdog_timeout_t} covering all ten timeout settings, and
+\code{watchdog_init(watchdog_timeout_t timeout)}.
+
+Explain why eight of the ten members can take their default values while the last two must be given
+\code{32} and \code{33} explicitly. Then explain what the \code{WDCE} write immediately before the
+real one is for, and what happens if the second write comes too late. \worth{4}
+
+\qpart{c} Four values are candidates for EEPROM storage:
+\begin{enumerate}
+  \item a calibration offset written once during manufacture;
+  \item a live ADC reading sampled at 100\,Hz;
+  \item an on/off state a user toggles with a button;
+  \item a boot counter incremented on every reset.
+\end{enumerate}
+For each, state whether EEPROM is appropriate and why, quantifying your answer for the one that is
+clearly wrong. Then state where in \code{main()} the watchdog reset belongs, and how the timeout
+should be chosen relative to the loop it is protecting. \worth{4}
+
+% ------------------------------------------------------------------------------------------
+\question{A driver that scales}{12}
+\label{exb:q:7}
+
+\qpart{a} Write \file{driver/gpio.h}, and the body of \code{gpio_init()}, for a GPIO driver in which
+the caller passes a single Arduino pin number rather than register pointers:
+
+\begin{ccode}
+bool gpio_init(gpio_t* self, uint8_t pin, gpio_mode_t mode);
+\end{ccode}
+
+\begin{itemize}
+  \item Pins 0--7 map to \code{PORTD0}--\code{PORTD7}; pins 8--13 map to
+    \code{PORTB0}--\code{PORTB5}.
+  \item \code{gpio_init()} derives and stores the register pointers and the bit position itself.
+  \item Three modes are supported: input, input with pull-up, and output.
+  \item Any pin outside 0--13 returns \code{false} without touching a single register.
+\end{itemize}
+Doxygen comments are marked on the header. \worth{6}
+
+\qpart{b} In the original driver, \code{gpio_t}'s \code{pin} field was declared
+\code{const uint8_t pin;}. State why it can no longer be \code{const} in your version, and what
+specifically a \code{const} struct member permits and forbids. Then state why \code{gpio_read()}
+takes \code{const gpio_t* self} while \code{gpio_write()} takes \code{gpio_t* self}, and what would
+change if either took \code{gpio_t self} by value instead. \worth{3}
+
+\qpart{c} Two calls to \code{gpio_init()} with the same pin number would silently hand out two
+drivers for one piece of hardware.
+
+Write the pin-reservation table that prevents it: the declaration in \file{gpio.c}, the check and
+the claim inside \code{gpio_init()}, and the release inside \code{gpio_free()}. State why the table
+must be \code{static}, and what breaks if it is not. \worth{3}
+
+% ------------------------------------------------------------------------------------------
+\question{Hiding the implementation}{13}
+\label{exb:q:8}
+
+\qpart{a} The GPIO driver's struct currently sits, fields and all, in \file{gpio.h}.
+
+Write the opaque version of that header: what replaces the full struct definition, and what has to
+happen to the struct itself. Then state the three things this takes away from calling code, and for
+each, what the caller must do instead. \worth{4}
+
+\qpart{b} Write a \code{button_t} struct holding a GPIO and a press callback, together with
+
+\begin{ccode}
+static void button_check(const button_t* self, bool edge);
+\end{ccode}
+
+\noindent which invokes the callback when a press has been detected. State in words what
+\code{void (*on_press)(void);} declares, write the line that assigns a function to it, and write the
+line that calls through it. Then state why \code{button_check()} is better for never mentioning the
+LED it ultimately toggles. \worth{4}
+
+\qpart{c} Given the interface
+
+\begin{ccode}
+typedef struct gpio_interface gpio_interface_t;
+
+typedef struct gpio_vtable
+{
+    void (*del)(gpio_interface_t** self);
+    bool (*read)(const gpio_interface_t* self);
+    void (*write)(gpio_interface_t* self, bool value);
+    void (*toggle)(gpio_interface_t* self);
+} gpio_vtable_t;
+
+typedef struct gpio_interface
+{
+    const gpio_vtable_t* vptr;
+} gpio_interface_t;
+\end{ccode}
+
+\noindent write a second implementation, \code{gpio_stub_t}, that touches no hardware at all: the
+struct, its four vtable functions, the vtable itself, and \code{gpio_stub_new()}.
+
+State the one rule your struct's field order must obey and the language guarantee that makes the
+whole scheme work. State why a single shared vtable is enough for every instance ever created. Then
+state what having a stub makes possible that a hardware-only driver does not. \worth{5}
+
+% ------------------------------------------------------------------------------------------
+\section*{Register Reference}
+\phantomsection\label{exb:sec:registers}
+\addcontentsline{toc}{section}{Register Reference}
+\markright{Register Reference}
+
+Every ATmega328P register and bit this paper refers to is listed here, with what it is. Nothing
+below is worth marks by itself: the paper tests which register to reach for and when, not whether
+you can recall its name. Where a bit's \textbf{position} matters it is given; where a timing rule,
+an ordering rule or a formula matters it is not, because that is the part being examined.
+
+The target is an Arduino Uno/Nano at 16\,MHz.
+
+\subsection*{Board pins and ports}
+
+\begin{narrowtable}{@{}ll@{}}
+  \thead{Board pin} & \thead{Port bits} \\
+  \midrule
+  D0--D7 & \code{PORTD0}--\code{PORTD7} \\
+  D8--D13 & \code{PORTB0}--\code{PORTB5} \\
+  A0--A5 & \code{PORTC0}--\code{PORTC5} \\
+\end{narrowtable}
+
+\subsection*{Digital I/O --- one set per port, \code{x} being \code{B}, \code{C} or \code{D}}
+
+\begin{booktable}{@{}lL@{}}
+  \thead{Register} & \thead{What it is} \\
+  \midrule
+  \code{DDRx} & Data direction, one bit per pin: \code{1} = output, \code{0} = input. \\
+  \code{PORTx} & On an output pin, the level driven onto it. On an input pin, the internal pull-up
+    enable. \\
+  \code{PINx} & Reads the actual logic level on each pin. Writing a \code{1} to a bit toggles the
+    matching \code{PORTx} bit, whatever \code{DDRx} says; bits written \code{0} are unaffected. \\
+\end{booktable}
+
+\subsection*{Interrupts}
+
+\begin{booktable}{@{}>{\raggedright\arraybackslash}p{8.6em}L@{}}
+  \thead{Register / name} & \thead{What it is} \\
+  \midrule
+  \code{SREG} & Status register. Bit \code{I} is the global interrupt enable; \code{sei()} sets it,
+    \code{cli()} clears it. \\
+  \code{EICRA} & External interrupt edge select: \code{ISC01:ISC00} for INT0,
+    \code{ISC11:ISC10} for INT1. \\
+  \code{EIMSK} & External interrupt enable: bits \code{INT0}, \code{INT1}. \\
+  \code{INT0_vect} /\newline \code{INT1_vect} & External interrupt vectors, for D2 and D3
+    respectively. \\
+  \code{PCICR} & Pin change interrupt enable per port: \code{PCIE0} (B), \code{PCIE1} (C),
+    \code{PCIE2} (D). \\
+  \code{PCMSK0} / \code{PCMSK1} /\newline \code{PCMSK2} & Pin change mask for ports B, C and D.
+    The bit position matches the pin's own bit position within its port. \\
+  \code{PCINT0_vect} /\newline \code{PCINT1_vect} /\newline \code{PCINT2_vect} & Pin change
+    interrupt vectors, for ports B, C and D. \\
+\end{booktable}
+
+\noindent\code{ISCn1:ISCn0} encoding: \code{00} low level, \code{01} any logical change, \code{10}
+falling edge, \code{11} rising edge.
+
+\subsection*{ADC}
+
+\begin{booktable}{@{}>{\raggedright\arraybackslash}p{8.6em}L@{}}
+  \thead{Register / name} & \thead{What it is} \\
+  \midrule
+  \code{ADMUX} & Bits 3:0 select the input channel. \code{REFS1:REFS0} (bits 7:6) select the
+    reference: \code{00} = the external \code{AREF} pin, \code{01} = \code{AVCC}. \\
+  \code{ADCSRA} & \code{ADEN} enables the ADC, \code{ADSC} starts a conversion, \code{ADIF} is the
+    conversion-complete flag (cleared by writing a \code{1} to it), \code{ADPS2:ADPS0} set the
+    prescaler. \\
+  \code{ADCL} / \code{ADCH} & Low and high halves of the 10-bit result. \\
+  \code{ADC} & Macro combining \code{ADCL} and \code{ADCH} into the full 10-bit value. \\
+\end{booktable}
+
+\noindent\code{ADPS2:ADPS0} encoding: \code{000} and \code{001} both divide by 2, and each value
+above that doubles the divisor, up to \code{111} = ÷128.
+
+\subsection*{Timers --- \code{n} is \code{0}, \code{1} or \code{2}}
+
+\begin{booktable}{@{}>{\raggedright\arraybackslash}p{8.6em}L@{}}
+  \thead{Register / name} & \thead{What it is} \\
+  \midrule
+  \code{TCCRnB} & Clock select \code{CSn2:CSn0} (the prescaler). \code{WGM12}, in \code{TCCR1B},
+    selects CTC mode on Timer~1. \\
+  \code{TCNTn} & The counter itself. \\
+  \code{OCRnA} & Compare value. In CTC mode the timer counts from 0 up to it, then clears. \\
+  \code{TIMSKn} & \code{TOIEn} enables the overflow interrupt; \code{OCIEnA} enables the
+    compare-match interrupt. \\
+  \code{TIMERn_OVF_vect} & Overflow vector. \\
+  \code{TIMERn_COMPA_vect} & Compare-match vector. \\
+\end{booktable}
+
+\noindent Timer~0 and Timer~2 are 8-bit; Timer~1 is 16-bit.
+
+\code{CSn2:CSn0} encoding differs between timers:
+
+\begin{narrowtable}{@{}lll@{}}
+  \thead{Bits} & \thead{Timer 0 / Timer 1} & \thead{Timer 2} \\
+  \midrule
+  \code{001} & ÷1 & ÷1 \\
+  \code{010} & ÷8 & ÷8 \\
+  \code{011} & ÷64 & ÷32 \\
+  \code{100} & ÷256 & ÷64 \\
+  \code{101} & ÷1024 & ÷128 \\
+  \code{110} & -- & ÷256 \\
+  \code{111} & -- & ÷1024 \\
+\end{narrowtable}
+
+\subsection*{UART}
+
+\begin{booktable}{@{}>{\raggedright\arraybackslash}p{8.6em}L@{}}
+  \thead{Register / name} & \thead{What it is} \\
+  \midrule
+  \code{UCSR0A} & \code{UDRE0} is set when \code{UDR0} is free to accept a new byte. \code{RXC0}
+    is set when a fully received byte is waiting in \code{UDR0}. \\
+  \code{UCSR0B} & \code{TXEN0} enables the transmitter, \code{RXEN0} enables the receiver. \\
+  \code{UCSR0C} & Frame format. \code{UCSZ01} and \code{UCSZ00} set together give 8 data bits. \\
+  \code{UBRR0} & Baud rate divisor. Only the low 12 bits are used. \\
+  \code{UDR0} & Data register: written to transmit, read to receive. Reading it clears
+    \code{RXC0}. \\
+\end{booktable}
+
+\subsection*{EEPROM}
+
+\begin{booktable}{@{}>{\raggedright\arraybackslash}p{8.6em}L@{}}
+  \thead{Register / name} & \thead{What it is} \\
+  \midrule
+  \code{EEAR} & Address to read from or write to, 0--1023. \\
+  \code{EEDR} & Data register: holds the byte to be written, or receives the byte just read. \\
+  \code{EECR} & \code{EERE} starts a read. \code{EEMPE} is the master write enable, a safety
+    interlock rather than a data bit. \code{EEPE} starts a write and stays set until that write
+    completes. \\
+\end{booktable}
+
+\noindent The ATmega328P has 1024 bytes of EEPROM. A byte write takes a few milliseconds, and a
+cell tolerates roughly 100,000 write cycles.
+
+\subsection*{Watchdog}
+
+\begin{booktable}{@{}>{\raggedright\arraybackslash}p{8.6em}L@{}}
+  \thead{Register / name} & \thead{What it is} \\
+  \midrule
+  \code{MCUSR} & MCU status register. \code{WDRF} is set by a watchdog-caused reset. \\
+  \code{WDTCSR} & Watchdog control and status. Bit 0 \code{WDP0}, bit 1 \code{WDP1}, bit 2
+    \code{WDP2}, bit 3 \code{WDE}, bit 4 \code{WDCE}, bit 5 \code{WDP3}, bit 6 \code{WDIE}, bit 7
+    \code{WDIF}. \\
+  \code{WDT_vect} & Watchdog interrupt vector. \\
+\end{booktable}
+
+\noindent\code{WDE} is the watchdog enable, \code{WDIE} the watchdog interrupt enable, and
+\code{WDCE} the change enable used when reconfiguring them. \code{WDP3:WDP0} select the timeout:
+\code{0000} is 16\,ms, and each step doubles it, up to \code{1001} = 8192\,ms.

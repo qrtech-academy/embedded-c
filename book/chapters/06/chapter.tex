@@ -1,0 +1,38 @@
+% Chapter 6, typeset from lectures/L06: the README is the opener and the closing review, the
+% lecture's Appendix A is a section with the same subsections, and its Appendix B, the exercises,
+% closes the chapter. The serial_driver_demo is typeset straight from its files in §6.1.6.
+
+\chapter{Serial Communication (UART)}
+\label{c6:ch}
+
+{\large\itshape A real channel to the PC, one bit at a time.\par}
+
+\begin{chapterbox}{In this chapter}
+\begin{itemize}
+  \item Why serial: a real communication channel to a PC instead of blink-and-infer debugging.
+  \item Configuring UART: \code{UCSR0B}, \code{UCSR0C}, and the \code{UBRR0} baud-rate formula.
+  \item Sending data: \code{UDR0}, the \code{UDRE0} flag, and building a reusable text-transmit
+    helper.
+  \item Mixing text and numbers with \code{sprintf()}.
+  \item Receiving data: \code{RXEN0}, the \code{RXC0} flag, and reading \code{UDR0} instead of
+    writing it.
+  \item Worked example: button toggles an LED and reports its new state over serial, using a
+    driver split across its own header and source file.
+\end{itemize}
+\end{chapterbox}
+
+This chapter gives the board a way to talk back. Until now every program has reported what it was
+doing by blinking an LED; with the UART it can send text to a PC. After the chapter you should be
+able to explain what baud rate is and compute \code{UBRR0} for a given clock and baud rate, write a
+byte and then a whole string over the UART, combine \code{sprintf()} with transmission to report a
+mix of text and numbers, explain why the code waits on \code{UDRE0} before writing a new byte, and
+receive a byte and explain how \code{RXC0} mirrors \code{UDRE0}.
+
+Read \secref{c6:sec:uart}, the substance of the chapter, in order: transmit first, then the
+chapter's demo, the book's first program split across several files, then receiving. Then work
+the exercises in \secref{c6:sec:exercises}. The Reflection and Calculation exercises are answered
+in Appendix~\ref{app:answers}; the Code exercises have no printed solution.
+
+\input{chapters/06/uart}
+\input{chapters/06/summary}
+\input{chapters/06/exercises}

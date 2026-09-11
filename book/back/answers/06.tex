@@ -1,0 +1,31 @@
+% Answers to Chapter 6's exercises, lectures/L06/appendix/b_exercises.md. The book's own answers:
+% the lecture publishes none.
+\answerchapter{6}{Serial Communication (UART)}
+
+\answer{c6:ex:1}
+With the formula of \secref{c6:a:2}:
+\[
+  \mathtt{UBRR0} = \frac{f_\mathrm{CPU}}{16 \cdot \mathit{baud}} - 1
+  = \frac{16\,000\,000}{16 \cdot 19\,200} - 1 = 52.08 - 1 = 51.08,
+\]
+which rounds to \code{UBRR0 = 51}. Check the baud rate that value actually gives:
+\[
+  \mathit{baud} = \frac{f_\mathrm{CPU}}{16\,(\mathtt{UBRR0} + 1)} = \frac{16\,000\,000}{16 \cdot 52}
+  = 19\,231~\mathrm{baud},
+\]
+an error of $(19\,231 - 19\,200)/19\,200 = +0.16\,\%$, well inside what a UART receiver tolerates
+(the datasheet's own baud-rate table lists 51 and 0.2\,\% for this case).
+
+\answer{c6:ex:2}
+\code{UDRE0}, USART Data Register Empty, is a flag in \code{UCSR0A} that is set while the transmit
+buffer, \code{UDR0}, can take a new byte. Writing \code{UDR0} clears it; it sets again as soon as
+the hardware has moved that byte on into the transmit shift register, which then sends it bit by
+bit while \code{UDR0} is free for the next one. It does not mean that the byte has finished
+sending (that is \code{TXC0}); it means there is room for another.
+
+\code{serial_write_byte()} waits for it because the CPU is far faster than the line. One 10-bit
+frame at 9600 baud takes about $10/9600 \approx 1.04$\,ms, some 16\,700 CPU cycles at 16\,MHz, and
+a byte written to \code{UDR0} while \code{UDRE0} is clear is simply ignored by the transmitter.
+Without the wait, \code{serial_print()} would run through the whole string in a few microseconds
+and every character after the first two (one in the shift register, one waiting in \code{UDR0})
+would be lost, so the terminal would show two characters instead of the message.

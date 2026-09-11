@@ -1,0 +1,494 @@
+% Section 9.1, from lectures/L09/appendix/a_structs_as_drivers.md. The gpio_driver_demo's GPIO
+% driver and main.c are typeset straight from their files in §9.1.5; its EEPROM, serial and
+% watchdog drivers are the ones printed in Chapters 6 to 8.
+
+\section{Structs as Drivers}
+\label{c9:sec:structs}\label{c9:app:a}
+
+\subsection{Why bundle state}
+\label{c9:a:1}
+\begin{itemize}
+  \item The drivers covered in Chapters~\ref{c4:ch} and \ref{c6:ch}--\ref{c8:ch} --- the ADC,
+    UART, EEPROM, and the watchdog --- did not need any structs:
+  \begin{itemize}
+    \item The chip has exactly one ADC (\code{adc_read()} already takes a channel number as a
+      parameter, so it was never hardcoded to a single pin the way the examples below are).
+    \item It has exactly one UART.
+    \item It has exactly one EEPROM.
+    \item It has exactly one watchdog.
+    \item Because there is only one instance of each peripheral, plain functions operating on
+      implicit global state were the simplest correct solution.
+  \end{itemize}
+  \item The same single-instance pattern shows up again with peripherals the chip actually has
+    many of, where it isn't the right solution:
+  \begin{itemize}
+    \item \code{LED_ON} assumes one specific LED, even though the chip has many GPIO pins.
+    \item The configuration is effectively hardcoded into macros, functions, and global state.
+  \end{itemize}
+  \item This pattern works well as long as the program needs only one instance of each thing.
+  \item The pattern starts to break down when the program needs several instances:
+  \begin{itemize}
+    \item \Secref{c4:app:b} contains an exercise with five LEDs, Exercise~\ref{c4:ex:7}.
+    \item Without a better abstraction, adding another LED means copying an entire family of
+      macros or functions and renaming them.
+    \item That quickly becomes repetitive, difficult to maintain, and easy to get wrong.
+  \end{itemize}
+  \item C already provides the tool needed to solve this problem: the \code{struct}:
+  \begin{itemize}
+    \item Store one peripheral instance's configuration and state in a \code{struct}.
+    \item Create one struct value for each LED (or other multi-instance peripheral) instance.
+    \item Write ordinary functions that receive a pointer to the relevant struct.
+    \item The same functions can then operate on several different instances.
+  \end{itemize}
+  \item By convention, the pointer parameter is called \code{self}:
+  \begin{itemize}
+    \item \code{self} points to the particular peripheral instance that the function should
+      operate on.
+    \item It plays a role similar to \code{this} in languages with built-in object support, such
+      as C++, C\#, and Java.
+    \item Unlike \code{this}, however, \code{self} is just an ordinary function parameter written
+      explicitly in the code.
+  \end{itemize}
+  \item However, C has no built-in support for object-oriented programming:
+  \begin{itemize}
+    \item There is no hidden behaviour.
+    \item There are no constructors.
+    \item There is no inheritance.
+    \item There is no automatic method dispatch.
+    \item There is only a \code{struct} containing data and a set of ordinary functions that
+      accept a pointer to that data.
+  \end{itemize}
+  \item This chapter keeps the design deliberately simple:
+  \begin{itemize}
+    \item The struct's fields remain directly accessible.
+    \item Functions are called normally.
+    \item No function pointers are required.
+  \end{itemize}
+  \item The next chapter, Chapter~\ref{c10:ch}, explores how much further this approach can be
+    taken:
+  \begin{itemize}
+    \item Hiding a struct's internal fields.
+    \item Calling operations through function pointers.
+    \item Creating a more object-like interface while still using C.
+  \end{itemize}
+\end{itemize}
+
+\subsection{The \code{self} convention: a \code{GPIO} driver}
+\label{c9:a:2}
+A minimal driver is a struct holding whatever a function needs to know to act on one specific
+instance: here, pointers to the GPIO's data direction (\code{DDRx}), output (\code{PORTx}), and
+input (\code{PINx}) registers, plus the bit position of its pin within them.
+
+See \secref{c1:a:3} for a refresher on structs and \code{typedef}; \code{gpio_t} follows the same
+anonymous-struct-plus-\code{_t}-suffix convention introduced there.
+
+\begin{ccode}
+/**
+ * @brief GPIO driver structure.
+ */
+typedef struct
+{
+    /** Pointer to the data direction register associated with the GPIO. */
+    volatile uint8_t* ddrx;
+
+    /** Pointer to the output register associated with the GPIO. */
+    volatile uint8_t* portx;
+
+    /** Pointer to the input register associated with the GPIO. */
+    volatile uint8_t* pinx;
+
+    /** Bit position of the GPIO pin within the associated port. */
+    const uint8_t pin;
+} gpio_t;
+
+/**
+ * @brief Enumeration of GPIO modes.
+ */
+typedef enum
+{
+    GPIO_MODE_INPUT,        ///< Standard GPIO input.
+    GPIO_MODE_INPUT_PULLUP, ///< GPIO input with its internal pull-up enabled.
+    GPIO_MODE_OUTPUT,       ///< GPIO output.
+} gpio_mode_t;
+
+/**
+ * @brief Initialize GPIO.
+ *
+ * @param[in] self GPIO instance.
+ * @param[in] mode GPIO mode.
+ */
+void gpio_init(gpio_t* self, const gpio_mode_t mode)
+{
+    if (NULL == self) { return; }
+
+    switch (mode)
+    {
+        case GPIO_MODE_INPUT_PULLUP:
+            *self->ddrx &= ~(1U << self->pin);
+            *self->portx |= (1U << self->pin);
+            break;
+        case GPIO_MODE_OUTPUT:
+            *self->ddrx |= (1U << self->pin);
+            *self->portx &= ~(1U << self->pin);
+            break;
+        default:
+            *self->ddrx &= ~(1U << self->pin);
+            *self->portx &= ~(1U << self->pin);
+            break;
+    }
+}
+
+/**
+ * @brief Set state of the given GPIO.
+ *
+ * @param[in] self GPIO instance.
+ * @param[in] state GPIO state (true = high, false = low).
+ *
+ * @note This operation is only supported for GPIOs configured as outputs.
+ */
+void gpio_write(gpio_t* self, const bool state)
+{
+    if (NULL == self) { return; }
+    const bool output = (*self->ddrx & (1U << self->pin));
+    if (!output) { return; }
+
+    if (state) { *self->portx |= (1U << self->pin); }
+    else { *self->portx &= ~(1U << self->pin); }
+}
+
+/**
+ * @brief Read state of the given GPIO.
+ *
+ * @param[in] self GPIO instance.
+ *
+ * @return GPIO state (true = high, false = low).
+ */
+bool gpio_read(const gpio_t* self)
+{
+    return (NULL != self) ? (*self->pinx & (1U << self->pin)) : false;
+}
+
+/**
+ * @brief Toggle state of the given GPIO.
+ *
+ * @param[in] self GPIO instance.
+ */
+void gpio_toggle(gpio_t* self)
+{
+    if (NULL == self) { return; }
+    const bool output = (*self->ddrx & (1U << self->pin));
+    if (!output) { return; }
+    *self->pinx = (1U << self->pin);
+}
+\end{ccode}
+
+\noindent A GPIO output instance can then be initialized as shown below:
+
+\begin{ccode}
+#define LED1_PIN 1U // D9 -> PORTB1.
+
+/** Initialize LED on D9 (PORTB1). */
+gpio_t led1 = {&DDRB, &PORTB, &PINB, LED1_PIN};
+
+gpio_init(&led1, GPIO_MODE_OUTPUT);
+\end{ccode}
+
+\noindent Most of these functions take \code{gpio_t*} rather than \code{gpio_t}: passing a pointer
+avoids copying the struct on every call, and they need to write through \code{self} to the
+hardware registers it points at. \code{gpio_read()} takes \code{const gpio_t*} instead, since it
+only ever reads \code{self}, never writes through it.
+
+\subsection{Splitting the driver into \code{gpio.h} and \code{gpio.c}}
+\label{c9:a:3}
+So far \secref{c9:a:2}'s \code{gpio_t}, \code{gpio_mode_t}, and every \code{gpio_*()} function
+have lived together in one code block. In a real project a driver is split across a header and a
+source file, the same split \secref{c1:a:6} introduced for \file{sensor.h}/\file{sensor.c},
+include guard and all:
+\begin{itemize}
+  \item The header (\file{gpio.h}) is the public interface: the \code{gpio_t} and
+    \code{gpio_mode_t} type definitions, plus a documented prototype for every function callers
+    are allowed to use.
+  \item The source file (\file{gpio.c}) \code{#include}s its own header, after the standard and
+    AVR headers as everywhere in this book, then defines those same functions. Callers only ever
+    see the header; the definitions in \file{gpio.c} are what actually gets compiled.
+\end{itemize}
+One thing is new compared to \file{sensor.h}: that header only ever declared a function, callers
+never touched anything but the value it returned. \file{gpio.h} also declares \code{gpio_t}
+itself, because a caller needs to create and initialize their own \code{gpio_t} instances directly
+(as in \secref{c9:a:2}'s \code{led1} example), not just receive values back from an opaque handle.
+That's also why \code{gpio_t}'s fields stay public here instead of hidden behind a pointer to an
+incomplete type; Chapter~\ref{c10:ch} revisits that trade-off.
+
+Here's \file{driver/gpio.h}:
+
+\begin{ccode}
+/**
+ * @file GPIO driver.
+ */
+#ifndef DRIVER_GPIO_H_
+#define DRIVER_GPIO_H_
+
+#include <stdbool.h>
+#include <stdint.h>
+
+/**
+ * @brief GPIO driver structure.
+ */
+typedef struct
+{
+    /** Pointer to the data direction register associated with the GPIO. */
+    volatile uint8_t* ddrx;
+
+    /** Pointer to the output register associated with the GPIO. */
+    volatile uint8_t* portx;
+
+    /** Pointer to the input register associated with the GPIO. */
+    volatile uint8_t* pinx;
+
+    /** Bit position of the GPIO pin within the associated port. */
+    const uint8_t pin;
+} gpio_t;
+
+/**
+ * @brief Enumeration of GPIO modes.
+ */
+typedef enum
+{
+    GPIO_MODE_INPUT,        ///< Standard GPIO input.
+    GPIO_MODE_INPUT_PULLUP, ///< GPIO input with its internal pull-up enabled.
+    GPIO_MODE_OUTPUT,       ///< GPIO output.
+} gpio_mode_t;
+
+/**
+ * @brief Initialize GPIO.
+ *
+ * @param[in] self GPIO instance.
+ * @param[in] mode GPIO mode.
+ */
+void gpio_init(gpio_t* self, gpio_mode_t mode);
+
+/**
+ * @brief Set state of the given GPIO.
+ *
+ * @param[in] self GPIO instance.
+ * @param[in] state GPIO state (true = high, false = low).
+ *
+ * @note This operation is only supported for GPIOs configured as outputs.
+ */
+void gpio_write(gpio_t* self, bool state);
+
+/**
+ * @brief Read state of the given GPIO.
+ *
+ * @param[in] self GPIO instance.
+ *
+ * @return GPIO state (true = high, false = low).
+ */
+bool gpio_read(const gpio_t* self);
+
+/**
+ * @brief Toggle state of the given GPIO.
+ *
+ * @param[in] self GPIO instance.
+ */
+void gpio_toggle(gpio_t* self);
+
+#endif /** DRIVER_GPIO_H_ */
+\end{ccode}
+
+\noindent Here's \file{driver/gpio.c}:
+
+\begin{ccode}
+/**
+ * @file GPIO driver implementation details.
+ */
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#include <avr/io.h>
+
+#include "driver/gpio.h"
+
+// -----------------------------------------------------------------------------
+void gpio_init(gpio_t* self, const gpio_mode_t mode)
+{
+    // Check the GPIO instance, terminate if invalid.
+    if (NULL == self) { return; }
+
+    // Configure GPIO mode as specified.
+    switch (mode)
+    {
+        case GPIO_MODE_INPUT_PULLUP:
+            // Configure GPIO as input with its internal pull-up enabled.
+            *self->ddrx &= ~(1U << self->pin);
+            *self->portx |= (1U << self->pin);
+            break;
+        case GPIO_MODE_OUTPUT:
+            // Configure GPIO as output.
+            *self->ddrx |= (1U << self->pin);
+            *self->portx &= ~(1U << self->pin);
+            break;
+        default:
+            // Configure GPIO as standard input.
+            *self->ddrx &= ~(1U << self->pin);
+            *self->portx &= ~(1U << self->pin);
+            break;
+    }
+}
+
+// -----------------------------------------------------------------------------
+void gpio_write(gpio_t* self, const bool state)
+{
+    // Check the GPIO instance, terminate if invalid.
+    if (NULL == self) { return; }
+
+    // Check GPIO direction, terminate if not output.
+    const bool output = (*self->ddrx & (1U << self->pin));
+    if (!output) { return; }
+
+    // Set GPIO state as specified.
+    if (state) { *self->portx |= (1U << self->pin); }
+    else { *self->portx &= ~(1U << self->pin); }
+}
+
+// -----------------------------------------------------------------------------
+bool gpio_read(const gpio_t* self)
+{
+    // Return GPIO state if GPIO instance is valid, else false.
+    return (NULL != self) ? (*self->pinx & (1U << self->pin)) : false;
+}
+
+// -----------------------------------------------------------------------------
+void gpio_toggle(gpio_t* self)
+{
+    // Check the GPIO instance, terminate if invalid.
+    if (NULL == self) { return; }
+
+    // Check GPIO direction, terminate if not output.
+    const bool output = (*self->ddrx & (1U << self->pin));
+    if (!output) { return; }
+
+    // Toggle GPIO state.
+    *self->pinx = (1U << self->pin);
+}
+\end{ccode}
+
+\noindent Notice \code{gpio_init()}'s \code{mode} parameter (and \code{gpio_write()}'s
+\code{state}) drop the \code{const} in the header but keep it in the source file. A top-level
+\code{const} on a parameter only constrains what the function body can do with its own local copy;
+it isn't part of the function's type and can't affect how callers call it, so by convention it's
+omitted from the prototype and kept in the definition, where it actually matters.
+
+\subsection{Worked example: an array of LEDs}
+\label{c9:a:4}
+The whole point of a driver struct is that \code{gpio_write()}/\code{gpio_read()} don't care which
+GPIO they're called on. An array of \code{gpio_t} instances plus a loop replaces a whole family of
+per-LED macros:
+
+\begin{ccode}
+#define LED_COUNT 5U
+
+// Create five LED instances.
+static gpio_t leds[LED_COUNT] =
+{
+    { &DDRD, &PORTD, &PIND, 6U}, // D6  -> PORTD6.
+    { &DDRD, &PORTD, &PIND, 7U}, // D7  -> PORTD7.
+    { &DDRB, &PORTB, &PINB, 0U}, // D8  -> PORTB0.
+    { &DDRB, &PORTB, &PINB, 1U}, // D9  -> PORTB1.
+    { &DDRB, &PORTB, &PINB, 2U}, // D10 -> PORTB2.
+};
+
+/**
+ * @brief Set up system.
+ */
+static void setup(void)
+{
+    for (uint8_t i = 0U; i < LED_COUNT; i++)
+    {
+        gpio_init(&leds[i], GPIO_MODE_OUTPUT);
+    }
+}
+\end{ccode}
+
+\noindent Compare this to \secref{c4:app:b}'s five-LED exercise, Exercise~\ref{c4:ex:7}, which
+needed a hand-written \code{LED1_ON} through \code{LED5_ON} (and \code{_OFF}), one pair of macros
+per pin. Here, adding a sixth LED on the same port means adding one line to the \code{leds[]}
+array, no new functions.
+
+\subsection{Worked example: \code{gpio_t} wired into Chapters 6--8's demo}
+\label{c9:a:5}
+Combines Chapter~\ref{c6:ch}'s serial driver, Chapter~\ref{c7:ch}'s EEPROM driver, and
+Chapter~\ref{c8:ch}'s watchdog driver with this section's \code{gpio_t}: LED1 (D9) persists its
+state across resets via EEPROM, BTN1 (D13) toggles LED1 through a debounced pin-change interrupt
+exactly like \secref{c8:a:5}, and the watchdog resets the chip if the main loop ever stalls. Every
+register access that went through Chapter~\ref{c8:ch}'s \code{LED1_TOGGLE}/\code{LED1_ENABLED}/%
+\code{BTN1_PRESSED} macros now goes through \code{gpio_toggle()}/\code{gpio_read()} instead.
+
+The circuit is Chapter~\ref{c6:ch}'s, in Figure~\ref{c6:fig:serial}.
+
+\begin{console}
+gpio_driver_demo/
+├── Makefile
+├── main.c
+├── include/
+│   └── driver/
+│       ├── eeprom.h
+│       ├── gpio.h
+│       ├── serial.h
+│       └── watchdog.h
+└── source/
+    └── driver/
+        ├── eeprom.c
+        ├── gpio.c
+        ├── serial.c
+        └── watchdog.c
+\end{console}
+
+\begin{itemize}
+  \item The serial, EEPROM, and watchdog drivers were introduced in
+    Chapters~\ref{c6:ch}--\ref{c8:ch}.
+  \item \file{driver/gpio.h} and \file{driver/gpio.c}, both printed in full below, extend the
+    \code{gpio_t} type introduced in \secref{c9:a:2} and \secref{c9:a:3}.
+  \item The extended driver adds one capability not covered in those sections:
+  \begin{itemize}
+    \item \code{gpio_enable_pci()} enables or disables the pin-change interrupt for a GPIO.
+    \item It does this by writing the same \code{PCICR} and \code{PCMSKx} bits that were
+      configured manually in \secref{c8:a:5}.
+  \end{itemize}
+  \item Supporting \code{gpio_enable_pci()} requires two additional fields in \code{gpio_t},
+    beyond \code{ddrx}, \code{portx}, \code{pinx}, and \code{pin}:
+  \begin{itemize}
+    \item A pointer to the port's \code{PCMSKx} register.
+    \item The bit position of the port's \code{PCIEx} bit in \code{PCICR}.
+  \end{itemize}
+  \item Every \code{gpio_t} instance contains these two additional fields:
+  \begin{itemize}
+    \item This is true even when that particular GPIO never uses \code{gpio_enable_pci()}.
+    \item For example, LED1 still carries the pin-change-interrupt configuration fields.
+  \end{itemize}
+\end{itemize}
+
+\subsubsection{The driver in full}
+\cfile{lectures/L09/gpio_driver_demo/include/driver/gpio.h}
+\needspace{8\baselineskip}
+\cfile{lectures/L09/gpio_driver_demo/source/driver/gpio.c}
+
+\subsubsection{\code{main.c} in full}
+\cfile{lectures/L09/gpio_driver_demo/main.c}
+
+\noindent\code{led1_event}, the debounce timer, and the EEPROM-persistence logic are unchanged from
+\secref{c8:a:5}; only the GPIO handling changed, from bespoke macros tied to \code{PORTB}
+specifically to a driver that works for however many \code{gpio_t} instances a program declares,
+on whichever pins and ports they happen to be wired to.
+
+\subsubsection{Building and running}
+Build and flash the same way as \secref{c8:a:5}: on Linux, run \code{make} in the demo's
+directory, \file{lectures/L09/gpio_driver_demo} (\code{make flash} to program the board); on
+Windows via Microchip Studio, recreate this folder structure inside the project and add
+\file{include} as an include directory.
+
+The demo's \file{Makefile} is the one printed in \secref{c6:sec:build}, with
+\file{source/driver/eeprom.c}, \file{source/driver/gpio.c} and \file{source/driver/watchdog.c}
+added to its \code{SRC_FILES}. Its serial, EEPROM and watchdog drivers are byte for byte the ones
+printed in \secref{c6:a:6}, \secref{c7:a:4} and \secref{c8:a:5}.

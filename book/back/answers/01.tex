@@ -1,0 +1,31 @@
+% Answers to Chapter 1's exercises, lectures/L01/appendix/b_exercises.md. The book's own answers:
+% the lecture publishes none.
+\answerchapter{1}{C Fundamentals}
+Every exercise in this chapter is a Code exercise; what follows answers only the questions three of
+them ask.
+
+\answer{c1:ex:3}
+It depends on the compiler and its flags. GCC's \code{-Wswitch} is part of \code{-Wall}, so with
+\code{-Wall} a \code{switch} on a \code{state_t} that leaves out one of the named constants gives a
+warning along the lines of ``enumeration value \code{STATE_FAST} not handled in switch''; a plain
+\code{gcc main.c} without it stays silent. Clang enables \code{-Wswitch} by default. The warning
+only appears while the \code{switch} has no \code{default} label: a \code{default} counts as
+handling every remaining value, so it silences the check (\code{-Wswitch-enum} warns even then).
+This is the help from the compiler that \secref{c1:a:3} gives as a reason to prefer an \code{enum}
+over a block of \code{#define}d constants, whose \code{switch} no compiler can check.
+
+\answer{c1:ex:5}
+Its forward declaration goes in \file{temp_reading.c}, once, right after the \code{#include}s, not
+in \file{temp_reading.h}: the helper is \code{static}, an implementation detail rather than part of
+the module's public API. Its definition goes at the bottom of the file, after the public functions,
+which are defined in the order the header declares them. A reader then meets the public API first
+and reaches the private detail only by scrolling on. Following \secref{c1:a:2}, the declaration
+leaves a by-value parameter unqualified and the definition makes it \code{const}.
+
+\answer{c1:ex:7}
+Because C passes every argument by value. A \code{temp_reading_t*} parameter is a copy of the
+caller's pointer: the function can change the struct it points to, which is all
+\code{temp_reading_reset()} needs, but setting the parameter itself to \code{NULL} changes only the
+local copy, and the caller's pointer still holds the old address. To change the caller's pointer,
+the function needs that pointer's address, a \code{temp_reading_t**}, and assigns \code{NULL}
+through it, the way \code{set_to_null()} does in \secref{c1:a:7}.

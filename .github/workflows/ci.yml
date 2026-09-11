@@ -22,7 +22,7 @@ jobs:
       - name: Check formatting
         run: make format-check
 
-  # Find every lecture directory containing a Makefile.
+  # Find every lecture directory containing a Makefile (the book's, in book/, is built by book.yml).
   discover-firmware:
     name: Discover firmware projects
     runs-on: ubuntu-latest
@@ -34,7 +34,7 @@ jobs:
       - name: Find Makefile directories
         id: find
         run: |
-          dirs=$(find . -mindepth 2 -name Makefile -exec dirname {} \; | sort)
+          dirs=$(find ./lectures -name Makefile -exec dirname {} \; | sort)
           json="["
           first=true
           for d in $dirs; do

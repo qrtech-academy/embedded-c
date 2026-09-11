@@ -1,0 +1,430 @@
+% Section 3.1, from lectures/L03/appendix/a_interrupts.md.
+
+\section{Interrupts}
+\label{c3:sec:interrupts}\label{c3:app:a}
+
+\subsection{Why interrupts}
+\label{c3:a:1}
+\begin{itemize}
+  \item Every input we've read so far has been polled: the \code{while} loop checks
+    \code{BTN1_PRESSED} every iteration. Fine for one button, but it wastes cycles and doesn't
+    scale; imagine polling a dozen inputs, or needing sub-millisecond reaction time on one of them
+    while the rest of the program does something else entirely.
+  \item An interrupt lets a hardware event (button edge, timer overflow, ADC done, UART byte
+    received\ldots) suspend whatever the CPU is doing, run a dedicated handler (an
+    \textbf{Interrupt Service Routine}, or \textbf{ISR}), and then resume exactly where it left
+    off. It's the embedded equivalent of an event handler, except the ``event loop'' is the CPU
+    itself.
+  \item Analogy: an MP3 player's main loop plays the current track. Pressing ``next'' doesn't get
+    checked between every audio sample; it interrupts playback, the ISR queues the next track, and
+    playback resumes.
+  \item Because you don't control \emph{when} an ISR fires, keep them short: flip a flag or update
+    a small piece of state, and let \code{main()}'s loop do the actual work. We'll follow that
+    convention throughout.
+\end{itemize}
+
+\subsection{External interrupts: INT0 / INT1}
+\label{c3:a:2}
+The ATmega328P has two pins wired straight to dedicated interrupt logic: \textbf{INT0} on D2
+(\code{PORTD2}) and \textbf{INT1} on D3 (\code{PORTD3}).
+
+Three things to configure:
+\begin{enumerate}
+  \item \textbf{Global interrupt enable}, the \code{I} bit in the status register \code{SREG}.
+    \code{<avr/interrupt.h>} provides \code{sei()}/\code{cli()} for this, thin wrappers around the
+    \code{SEI}/\code{CLI} assembly instructions:
+
+\begin{ccode}
+sei(); // Enable interrupts globally.
+cli(); // Disable interrupts globally.
+\end{ccode}
+  \item \textbf{Edge/level selection}, per interrupt, in \code{EICRA} (bits
+    \code{ISCn1:ISCn0}):
+
+\begin{narrowtable}{@{}ll@{}}
+  \thead{\code{ISCn1:ISCn0}} & \thead{Triggers on} \\
+  \midrule
+  \code{00} & pin is low \\
+  \code{01} & any logic change \\
+  \code{10} & falling edge (high $\rightarrow$ low) \\
+  \code{11} & rising edge (low $\rightarrow$ high) \\
+\end{narrowtable}
+
+\begin{ccode}
+EICRA = (1U << ISC00) | (1U << ISC01); // Enable INT0 on rising edge.
+\end{ccode}
+  \item \textbf{Enable the specific interrupt} in \code{EIMSK}:
+
+\begin{ccode}
+EIMSK = (1U << INT0);
+\end{ccode}
+\end{enumerate}
+
+The handler itself is a function named \code{ISR}, parameterized by a \emph{vector} that ties it
+to a specific interrupt source, \code{INT0_vect} for INT0, \code{INT1_vect} for INT1. No prototype,
+no explicit call site; the vector is how the linker wires it up.
+
+\begin{ccode}
+ISR(INT0_vect)
+{
+    // Runs on the configured edge, then execution resumes exactly where the main program
+    // was interrupted.
+}
+\end{ccode}
+
+\subsection{Example: toggle an LED via INT0}
+\label{c3:a:3}
+Button on D2 (INT0, rising edge), LED on D9. Every press flips the LED.
+
+\bookimage{lectures/L03/appendix/images/circuit_int0_toggle.png}{A button on D2 (INT0) and an LED
+on D9.}{c3:fig:int0}
+
+\begin{ccode}
+#include <avr/interrupt.h>
+#include <avr/io.h>
+
+/** GPIO pins. */
+#define LED1 1U // D9  -> PORTB1.
+
+/** GPIO operations. */
+#define LED1_TOGGLE PINB = (1U << LED1) // Toggle LED1.
+
+/**
+ * @brief Set up system.
+ */
+static void setup(void)
+{
+    // Configure LED1 as output.
+    DDRB = (1U << LED1);
+
+    // Enable rising edge interrupt on INT0 (D2) => button pressdown will cause an interrupt.
+    EICRA = (1U << ISC00) | (1U << ISC01);
+    EIMSK = (1U << INT0);
+
+    // Enable interrupts globally.
+    sei();
+}
+
+/**
+ * @brief Toggle the LED on button event.
+ */
+ISR(INT0_vect) { LED1_TOGGLE; }
+
+/**
+ * @brief Application entry point.
+ *
+ * @return 0 on termination of the program (should never occur).
+ */
+int main(void)
+{
+    setup();
+    while (1) {}
+    return 0;
+}
+\end{ccode}
+
+\textbf{Why \code{LED1_TOGGLE} writes to \code{PINB}, not \code{PORTB}.} \code{PINx} registers are
+normally read-only: reading \code{PINB} returns the actual logic level currently on each of Port
+B's pins, regardless of whether they're configured as inputs or outputs. But writing a \code{1} to a
+\code{PINxn} bit is a documented exception: on this chip (and other modern AVR cores), it
+\emph{toggles} the corresponding \code{PORTxn} bit instead of doing nothing, independent of that
+pin's \code{DDRxn} setting. Only the bits written as \code{1} are affected; any \code{0} bits in
+the write leave their \code{PORTx} counterpart untouched.
+
+This isn't a hack, it's a deliberate hardware feature, and it exists because a toggle written the
+``obvious'' way, \code{PORTB ^= (1U << LED1);}, is a read-modify-write: the CPU reads \code{PORTB},
+flips the bit, then writes the result back. If an interrupt changes another bit in \code{PORTB}
+between that read and that write, the interrupt's change gets silently overwritten once the write
+completes. Writing to \code{PINB} instead needs no read at all, so there's no window for that race;
+the toggle is atomic no matter what else might be touching \code{PORTB}.
+
+INT1 on D3 works identically for configuration; swap \code{ISC00}/\code{ISC01} for
+\code{ISC10}/\code{ISC11}, \code{INT0} for \code{INT1} in \code{EIMSK}, and \code{INT0_vect} for
+\code{INT1_vect}. \Secref{c3:a:4} walks through a full example.
+
+\subsection{Example: blink an LED via INT1}
+\label{c3:a:4}
+Button on D3 (INT1, falling edge, i.e.\ on release), LED on D9. Each press/release cycle toggles
+between the LED blinking every 100\,ms and staying off.
+
+\bookimage{lectures/L03/appendix/images/circuit_int1_blink.png}{A button on D3 (INT1) and an LED
+on D9.}{c3:fig:int1}
+
+\begin{ccode}
+#define F_CPU 16000000UL // CPU frequency in Hz.
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#include <avr/interrupt.h>
+#include <avr/io.h>
+#include <util/delay.h>
+
+/** GPIO pins. */
+#define LED1 1U // D9 -> PORTB1.
+
+/** GPIO operations. */
+#define LED1_ON PORTB |= (1U << LED1)   // Enable LED1.
+#define LED1_OFF PORTB &= ~(1U << LED1) // Disable LED1.
+
+/** Time parameters. */
+#define TICK_1MS 1U         // Generate a 1 ms tick in delay_ms().
+#define BLINK_SPEED_MS 100U // Blink speed in ms.
+
+/** Blink state (true = blinking, false = off); shared with the ISR, see below. */
+static volatile bool blink_state = false;
+
+/** Current blink speed in ms; also shared with the ISR. */
+static volatile uint16_t blink_speed_ms = 0U;
+
+/**
+ * @brief Set up system.
+ */
+static void setup(void)
+{
+    // Configure LED1 as output.
+    DDRB = (1U << LED1);
+
+    // Enable falling edge interrupt on INT1 (D3).
+    EICRA = (1U << ISC11);
+    EIMSK = (1U << INT1);
+
+    // Enable interrupts globally.
+    sei();
+}
+
+/**
+ * @brief Generate delay.
+ *
+ * @param[in] ms Pointer to the duration in ms.
+ *
+ * @note A pointer is used so that the duration can be set to 0 on blink state change.
+ */
+static void delay_ms(const volatile uint16_t* ms)
+{
+    // Null check included to demonstrate the practice; ms is only ever passed as
+    // &blink_speed_ms below, so this never actually triggers. Both this check and the
+    // <stddef.h> include it needs (for NULL) can be omitted.
+    if (NULL == ms) { return; }
+
+    for (uint16_t i = 0U; i < *ms; ++i)
+    {
+        _delay_ms(TICK_1MS);
+    }
+}
+
+/**
+ * @brief Blink the LED.
+ */
+static void led_blink(void)
+{
+    LED1_ON;
+    delay_ms(&blink_speed_ms);
+    LED1_OFF;
+    delay_ms(&blink_speed_ms);
+}
+
+/**
+ * @brief Toggle the blink state on button event, update the blink speed accordingly.
+ */
+ISR(INT1_vect)
+{
+    blink_state    = !blink_state;
+    blink_speed_ms = blink_state ? BLINK_SPEED_MS : 0U;
+}
+
+/**
+ * @brief Application entry point.
+ *
+ * @return 0 on termination of the program (should never occur).
+ */
+int main(void)
+{
+    setup();
+
+    while (1)
+    {
+        if (blink_state) { led_blink(); }
+        else { LED1_OFF; }
+    }
+    return 0;
+}
+\end{ccode}
+
+\textbf{Why \code{blink_state} and \code{blink_speed_ms} are \code{volatile}.} Both are written
+inside \code{ISR(INT1_vect)} and read elsewhere: \code{blink_state} in \code{main()}'s loop,
+\code{blink_speed_ms} via the pointer \code{delay_ms()} dereferences. Without \code{volatile}, the
+compiler is free to assume a variable never changes on its own between two reads in the same
+function, and is allowed to cache it in a register once instead of re-reading memory every time; it
+has no way to know an interrupt can run between those reads and change the value. Skipping
+\code{volatile} here wouldn't necessarily fail right away, either: the loop might work fine at low
+optimization levels and only start ignoring button presses once a build enables optimizations
+aggressive enough to actually act on that caching assumption, which is exactly the kind of bug
+that's miserable to track down later. \code{volatile} tells the compiler to always re-read (or
+re-write) the variable from memory, never to assume its value between accesses.
+Chapters~\ref{c5:ch} and~\ref{c6:ch} both reuse this same pattern for their own ISR-shared
+variables.
+
+\textbf{Why \code{delay_ms()} takes a pointer, not a plain \code{uint16_t}.} \Secref{c1:a:7}
+introduced pointers as C's way to let a function reach into the caller's own object instead of
+working on a private copy, there, so a function could write an out-parameter (\code{*x = 3;}). This
+is the same mechanism, used the other way around: \code{delay_ms(&blink_speed_ms)} doesn't hand the
+function \code{blink_speed_ms}'s value, it hands over its \emph{address}, so every \code{*ms} inside
+the loop re-reads whatever \code{blink_speed_ms} currently holds, not a value frozen at the moment
+\code{delay_ms()} was called.
+
+That distinction matters here specifically because \code{blink_speed_ms} can change out from under
+\code{delay_ms()} mid-delay, the ISR overwrites it the instant the button is released. Had
+\code{delay_ms()} taken \code{const uint16_t ms} by value instead, it would have received a private
+copy at call time and stayed blind to the ISR's update for the rest of the delay. With a pointer,
+the very next \code{i < *ms} check after the ISR runs sees the new value, so a press/release is
+noticed within about one 1\,ms tick instead of waiting for the whole delay to finish first.
+
+This live-reading trick relies on the same \code{volatile} guarantee explained above: without it,
+the compiler could assume \code{*ms} never changes across loop iterations and cache it in a
+register instead of re-reading memory each time, silently defeating the exact behavior this
+pointer parameter exists to enable.
+
+The blink itself still uses a blocking \code{_delay_ms()} loop, same as the hand-rolled delay of
+\secref{c2:a:6}; this chapter only changes \emph{how} the toggle is triggered, not how the blink
+timing works. Non-blocking timing is the subject of Chapter~\ref{c5:ch}, on timers.
+
+\subsection{Pin Change Interrupts (PCI) for any other pin}
+\label{c3:a:5}
+INT0/INT1 only cover two physical pins. Every other pin can still trigger an interrupt via
+\textbf{Pin Change Interrupts}, at the cost of some extra bookkeeping:
+\begin{itemize}
+  \item PCI interrupts are grouped \textbf{by port, not by pin}: all of \code{PORTB} shares one
+    vector (\code{PCINT0_vect}), all of \code{PORTC} shares another (\code{PCINT1_vect}), all of
+    \code{PORTD} a third (\code{PCINT2_vect}). Enable PCI on two pins in the same port and both
+    fire the \emph{same} ISR; the vector alone doesn't tell you which pin changed.
+  \item PCI fires on \textbf{both} edges (press and release); there's no edge-select register like
+    \code{EICRA} for it. If you only care about one edge, check the pin's actual level inside the
+    ISR and ignore the call otherwise.
+\end{itemize}
+Configuration, per port:
+
+\begin{narrowtable}{@{}llll@{}}
+  \thead{Port} & \thead{Enable bit (\code{PCICR})} & \thead{Mask register} &
+    \thead{Bit-name formula} \\
+  \midrule
+  B (D8--D13) & \code{PCIE0} & \code{PCMSK0} & \code{PCINTx = PORTBx} \\
+  C (A0--A5) & \code{PCIE1} & \code{PCMSK1} & \code{PCINTx = PORTCx + 8} \\
+  D (D0--D7) & \code{PCIE2} & \code{PCMSK2} & \code{PCINTx = PORTDx + 16} \\
+\end{narrowtable}
+
+Example: button on D13 (\code{PORTB5}) $\rightarrow$ \code{PCINT5}.
+
+\bookimage{lectures/L03/appendix/images/circuit_pci_toggle.png}{A button on D13 (\code{PCINT5})
+and an LED on D9.}{c3:fig:pci}
+
+\begin{ccode}
+#include <avr/interrupt.h>
+#include <avr/io.h>
+
+/** GPIO pins. */
+#define LED1 1U // D9  -> PORTB1.
+#define BTN1 5U // D13 -> PORTB5.
+
+/** GPIO operations. */
+#define LED1_TOGGLE PINB = (1U << LED1)    // Toggle LED1.
+#define BTN1_PRESSED (PINB & (1U << BTN1)) // High if BTN1 is pressed, low otherwise.
+
+/**
+ * @brief Set up system.
+ */
+static void setup(void)
+{
+    // Configure LED1 as output.
+    DDRB = (1U << LED1);
+
+    // Configure BTN1 as input with its internal pull-up enabled.
+    PORTB = (1U << BTN1);
+
+    // Enable pin change interrupt on D13 (for BTN1).
+    PCICR  = (1U << PCIE0);
+    PCMSK0 = (1U << BTN1);
+
+    // Enable interrupts globally.
+    sei();
+}
+
+/**
+ * @brief Toggle the LED on rising button edge.
+ */
+ISR(PCINT0_vect)
+{
+    if (BTN1_PRESSED) { LED1_TOGGLE; }
+}
+
+/**
+ * @brief Application entry point.
+ *
+ * @return 0 on termination of the program (should never occur).
+ */
+int main(void)
+{
+    setup();
+    while (1) {}
+    return 0;
+}
+\end{ccode}
+
+\subsection{PCI on any port: the general pattern}
+\label{c3:a:6}
+The port B example of \secref{c3:a:5} generalizes directly to ports C and D: only the enable bit,
+mask register, and vector change, following the same formula table from \secref{c3:a:5}.
+
+\begin{narrowtable}{@{}llll@{}}
+  \thead{Port} & \thead{Enable (\code{PCICR})} & \thead{Mask register} & \thead{Vector} \\
+  \midrule
+  B & \code{PCICR = (1U << PCIE0);} & \code{PCMSK0 = (1U << PCINTx);} & \code{ISR(PCINT0_vect)} \\
+  C & \code{PCICR = (1U << PCIE1);} & \code{PCMSK1 = (1U << PCINTx);} & \code{ISR(PCINT1_vect)} \\
+  D & \code{PCICR = (1U << PCIE2);} & \code{PCMSK2 = (1U << PCINTx);} & \code{ISR(PCINT2_vect)} \\
+\end{narrowtable}
+
+Worked example: a button on D2 (\code{PORTD2}) needs port D's enable bit and mask register, and its
+ISR is tied to \code{PCINT2_vect}:
+
+\begin{ccode}
+#define BTN2 2U // D2 -> PORTD2.
+
+static void setup(void)
+{
+    // ...
+    PCICR = (1U << PCIE2);  // Enable PCI on port D.
+    PCMSK2 = (1U << BTN2);  // Specifically D2 / PORTD2.
+    sei();                  // Enable interrupts globally.
+}
+
+ISR(PCINT2_vect) // Shared by every enabled PCI pin on port D.
+{
+    // ...
+}
+\end{ccode}
+
+\code{PCMSKn}'s bit position always matches the pin's own bit position within its port
+(\code{DDRx}/\code{PORTx}/\code{PINx}); the \code{PCINTx = PORTDx + 16}-style formula of
+\secref{c3:a:5} only matters for computing the \emph{global} \code{PCINTx} number (useful for
+looking a pin up in the datasheet), not for what bit to actually set in \code{PCMSKn}. So
+\code{PCMSK2 = (1U << BTN2)} above sets exactly the same bit as avr-libc's named
+\code{PCMSK2 = (1U << PCINT18)} would; defining your own pin-bit macro, the same convention
+\secref{c3:a:5} already used for \code{BTN1}, skips the global-number lookup entirely. Same idea
+for a button on D7 (\code{PORTD7}): \code{PCMSK2 = (1U << 7)} sets the same bit as
+\code{(1U << PCINT23)}, no formula needed.
+
+The same button on A0 (\code{PORTC0}) instead needs \code{PCIE1} / \code{PCMSK1}, and an
+\code{ISR(PCINT1_vect)}.
+
+\subsection{Choosing between INT0/INT1 and PCI}
+\label{c3:a:7}
+\begin{itemize}
+  \item Need a specific edge (rising \emph{or} falling, not both) and don't mind being limited to
+    D2/D3? Use INT0/INT1; it's simpler, and the edge filtering happens in hardware.
+  \item Need any other pin, or don't care which edge? Use PCI, and filter edges yourself by reading
+    the pin level in the ISR, as above.
+  \item Multiple PCI sources on the same port share an ISR, and if you have more than one, the
+    handler needs to work out which pin actually changed (e.g.\ by keeping a ``previous state''
+    byte and XOR-ing it against the current \code{PINx} read to see which bit flipped).
+\end{itemize}

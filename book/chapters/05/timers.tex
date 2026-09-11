@@ -1,0 +1,351 @@
+% Section 5.1, from lectures/L05/appendix/a_timers.md. The lecture's two circuit images are copies
+% of Chapter 4's potentiometer circuit, so neither is printed again: both circuits are described
+% against Figure 4.1 instead.
+
+\section{Timers}
+\label{c5:sec:timers}\label{c5:app:a}
+
+\subsection{Why timers}
+\label{c5:a:1}
+In the previous examples, a function \code{delay_ms()} has been used to generate delays between LED
+blinks and PWM pulses:
+
+\begin{ccode}
+/**
+ * @brief Generate delay.
+ *
+ * @param[in] ms Delay duration in ms.
+ */
+static void delay_ms(const uint16_t ms)
+{
+    for (uint16_t i = 0U; i < ms; ++i)
+    {
+        _delay_ms(TICK_1MS);
+    }
+}
+\end{ccode}
+
+\noindent This function works as intended, but it has some flaws:
+\begin{itemize}
+  \item \code{_delay_ms()} blocks: the CPU sits in a busy-loop doing nothing else for the duration.
+    Fine for a two-line demo, not for anything that also needs to poll a button, read a sensor, or
+    respond to interrupts while ``waiting.''
+  \item To avoid CPU blocks, a timer circuit can be used that flags when the given duration has
+    passed, i.e.\ when timeout occurs.
+  \item A timer is hardware that counts up on its own, driven by the CPU clock (divided down by a
+    \textbf{prescaler}), completely independent of your code. Configure it once and it can either
+    be polled, or, more usefully, fire an interrupt when it reaches a target value, letting you
+    build non-blocking delays and precise periodic events.
+  \item The ATmega328P has three: \textbf{Timer 0} and \textbf{Timer 2} are 8-bit (count
+    0--255), \textbf{Timer 1} is 16-bit (count 0--65535). Their registers follow a consistent
+    naming pattern; swap the digit (\code{0}/\code{1}/\code{2}) and the names carry over,
+    although, as \secref{c5:a:2} and \secref{c5:a:5} show, not every bit pattern does (Timer 2's
+    prescaler bits, and the bit that selects CTC mode on Timer 1).
+\end{itemize}
+
+\subsection{The math: prescaler \texorpdfstring{$\rightarrow$}{->} tick time
+  \texorpdfstring{$\rightarrow$}{->} interrupt count}
+\label{c5:a:2}
+Pick a \textbf{prescaler} (a clock divider) to get a manageable tick rate. At 16\,MHz with a
+\textdiv1024 prescaler:
+
+\begin{console}
+tick frequency = 16,000,000 / 1024 = 15,625 Hz
+tick period    = 1 / 15,625 = 0.064 ms
+\end{console}
+
+\noindent For an 8-bit timer, one full count (0$\rightarrow$255, i.e.\ 256 ticks) triggers one
+\textbf{overflow}. To get a specific delay, work out how many overflows you need:
+
+\begin{console}
+ticks needed     = desired_delay_ms / tick_period_ms
+overflows needed = ticks needed / 256          (8-bit timer)
+\end{console}
+
+\noindent E.g.\ a 100\,ms delay at 0.064\,ms/tick needs $\sim$1562 ticks $\approx$ 6 overflows. You
+don't have to hit this exactly with a single hardware compare; instead count overflow interrupts
+in software and act once you've counted enough. That's the pattern in the example below.
+
+Prescaler bit combinations for Timer 0 / Timer 1 are shown below:
+
+\begin{narrowtable}{@{}lrr@{}}
+  \thead{Prescaler bits} & \thead{Divisor} & \thead{Tick @ 16\,MHz} \\
+  \midrule
+  \code{001} & 1 & 62.5\,ns \\
+  \code{010} & 8 & 0.5\,\textmu s \\
+  \code{011} & 64 & 4\,\textmu s \\
+  \code{100} & 256 & 16\,\textmu s \\
+  \code{101} & 1024 & 64\,\textmu s \\
+\end{narrowtable}
+
+\noindent Timer 2's prescaler bit values differ somewhat:
+
+\begin{narrowtable}{@{}lrr@{}}
+  \thead{Prescaler bits} & \thead{Divisor} & \thead{Tick @ 16\,MHz} \\
+  \midrule
+  \code{001} & 1 & 62.5\,ns \\
+  \code{010} & 8 & 0.5\,\textmu s \\
+  \code{011} & 32 & 2\,\textmu s \\
+  \code{100} & 64 & 4\,\textmu s \\
+  \code{101} & 128 & 8\,\textmu s \\
+  \code{110} & 256 & 16\,\textmu s \\
+  \code{111} & 1024 & 64\,\textmu s \\
+\end{narrowtable}
+
+\subsection{Normal Mode vs.\ CTC Mode}
+\label{c5:a:3}
+There are two modes that will be covered in this chapter:
+\begin{itemize}
+  \item \textbf{Normal Mode}: the timer always counts to its full range (255 or 65535) before
+    overflowing and firing \code{TIMERn_OVF_vect}.
+  \item \textbf{CTC Mode} (Clear Timer on Compare): the timer counts up to a value \emph{you}
+    choose (written to \code{OCRnA}), fires \code{TIMERn_COMPA_vect}, and resets to 0, useful when
+    the period you want doesn't cleanly divide into 256 or 65536 ticks.
+\end{itemize}
+Both need the same steps: set the prescaler (which also starts the timer), enable the timer's own
+interrupt in \code{TIMSKn}, and enable interrupts globally. CTC additionally needs the compare
+value and the mode bit.
+
+\subsection{Non-blocking blink using Timer 0 (Normal Mode)}
+\label{c5:a:4}
+LED on D9 toggles approximately every 500\,ms (31 overflows of 16.384\,ms each, 508\,ms); no
+\code{_delay_ms()} anywhere, so the rest of \code{main()}'s loop stays free to do other work. The
+circuit is Chapter~\ref{c2:ch}'s first one, Figure~\ref{c2:fig:ledbutton}; its button on D13 isn't
+used here.
+
+\begin{ccode}
+#include <stdint.h>
+
+#include <avr/interrupt.h>
+#include <avr/io.h>
+
+/** GPIO pins. */
+#define LED1 1U // D9 -> PORTB1
+
+/** GPIO operations. */
+#define LED1_TOGGLE PINB = (1U << LED1) // Toggle LED1.
+
+/** Time parameters. */
+#define TICK_PERIOD_MS 0.064F // Tick period, prescaler 1024.
+#define TICK_MAX 256U         // Ticks per overflow when using an 8-bit timer.
+#define TIMEOUT_MS 500U       // Timeout in ms.
+
+/** Limit parameters; ticks and overflows needed for the desired timeout. */
+#define OVF_PERIOD_MS (TICK_PERIOD_MS * TICK_MAX)            // Time between each overflow in ms.
+#define OVF_MAX (uint8_t)(TIMEOUT_MS / OVF_PERIOD_MS + 0.5F) // Timeout measured in overflows.
+
+/**
+ * @brief Set up system.
+ */
+static void setup(void)
+{
+    // Configure LED1 as output.
+    DDRB = (1U << LED1);
+
+    // Enable overflow interrupt for timer 0, use prescaler 1024.
+    TCCR0B = (1U << CS00) | (1U << CS02);
+    TIMSK0 = (1U << TOIE0);
+    sei();
+}
+
+/**
+ * @brief Count overflows, toggle LED1 on timeout.
+ */
+ISR(TIMER0_OVF_vect)
+{
+    static volatile uint8_t ovf_count = 0U;
+
+    // Increment the overflow counter, toggle LED1 and clear the counter on timeout.
+    if (OVF_MAX <= ++ovf_count)
+    {
+        LED1_TOGGLE;
+        ovf_count = 0U;
+    }
+}
+
+/**
+ * @brief Application entry point.
+ *
+ * @return 0 on termination of the program (should never occur).
+ */
+int main(void)
+{
+    setup();
+    while (1) {}
+    return 0;
+}
+\end{ccode}
+
+\code{OVF_PERIOD_MS} and \code{OVF_MAX} are the calculation macros covered in \secref{c1:a:12}:
+\code{OVF_PERIOD_MS} parenthesizes its whole body the way \code{TICKS_NEEDED} does there, and
+\code{OVF_MAX} gets the same safety from its leading \code{(uint8_t)} cast instead: the cast
+applies to the parenthesized division that follows it, and a cast binds tighter than any
+arithmetic or comparison operator, so the expanded macro still acts as a single operand wherever
+it's used.
+
+\code{ovf_count} here is a function-local \code{static} variable, scoped entirely inside the ISR:
+nothing outside \code{ISR(TIMER0_OVF_vect)} ever touches it. That means \code{volatile} isn't
+actually load-bearing on this specific variable: the compiler can already see every read and write
+to \code{ovf_count} within this one function body, and nothing else can change it between two of
+them. Leaving \code{volatile} on here is a harmless habit. The moment to actually rely on it is the
+moment code outside this ISR needs to read \code{ovf_count} too, above all a loop in \code{main()}
+that waits for it to change, the situation the \code{blink_state} of \secref{c3:a:4} was in.
+
+\subsection{Timer 1 in CTC Mode (16-bit, arbitrary period)}
+\label{c5:a:5}
+Same idea, but Timer 1's extra range plus CTC mode let you hit a period directly, without stacking
+overflow counts except for very long delays. Register names swap the \code{0} for a \code{1}; CTC
+needs one extra bit, \code{WGM12}, to select CTC instead of Normal Mode.
+
+The counter, \code{TCNT1}, counts from \code{0} up to the value you write to \code{OCR1A}, so it
+takes \code{(OCR1A + 1)} ticks to reach it and fire a compare-match interrupt. To hit a specific
+timeout, work out how many ticks that timeout needs, then subtract one:
+
+\begin{console}
+ticks needed = timeout_ms / TICK_PERIOD_MS
+OCR1A        = ticks needed - 1
+\end{console}
+
+\noindent E.g.\ for a 100\,ms timeout at a 0.064\,ms tick (\textdiv1024 prescaler):
+\code{100 / 0.064 = 1562.5} ticks needed, exactly halfway between 1562 ticks (99.968\,ms) and 1563
+(100.032\,ms), which are equally close. Rounding up gives 1563, so \code{OCR1A = 1563 - 1 = 1562}.
+The macros below make the same calculation in floating point and land on \code{1561} instead, one
+tick short: \code{0.064F} can't be stored exactly and is a hair above \code{0.064}, so the
+division gives a hair under \code{1562.5}, and the rounding goes down. On a half tick either answer
+is as good as the other; a timeout that doesn't land on one, like the two seconds of
+Exercise~\ref{c5:ex:6}, comes out the same either way:
+
+\begin{ccode}
+#define TIMEOUT_MS 100U                            // Timeout in ms.
+#define TICK_PERIOD_MS 0.064F                      // Tick period, prescaler 1024.
+#define CMP_MAX (TIMEOUT_MS / TICK_PERIOD_MS - 1U) // Compare value.
+#define TICK_MAX (uint16_t)(CMP_MAX + 0.5F)        // Rounded compare value.
+
+TCCR1B = (1U << CS10) | (1U << CS12) | (1U << WGM12); // Set 1024 prescaler, use CTC mode.
+OCR1A  = TICK_MAX;                                    // Set timeout to 100 ms.
+TIMSK1 = (1U << OCIE1A);                              // Enable compare-match interrupt.
+\end{ccode}
+
+\noindent Timer 1's 16-bit range means \code{1561} fits directly; Timer 0's 8-bit range (max
+\code{255}) couldn't hold a value that large, which is exactly why \secref{c5:a:4} had to count
+multiple overflows in software instead.
+
+Two LEDs on D9/D10 alternate once every 100\,ms while enabled; a button on D13 toggles them on and
+off entirely, cutting the LEDs immediately rather than waiting for the next compare match. The
+circuit is the one from \secref{c2:a:6}, Figure~\ref{c2:fig:twoleds}.
+
+\begin{ccode}
+#include <stdbool.h>
+#include <stdint.h>
+
+#include <avr/interrupt.h>
+#include <avr/io.h>
+
+/** GPIO pins. */
+#define LED1 1U // D9  -> PORTB1.
+#define LED2 2U // D10 -> PORTB2.
+#define BTN1 5U // D13 -> PORTB5.
+
+/** GPIO operations. */
+#define LED1_ON PORTB |= (1U << LED1)                    // Enable LED1.
+#define LED1_OFF PORTB &= ~(1U << LED1)                  // Disable LED1.
+#define LED2_ON PORTB |= (1U << LED2)                    // Enable LED2.
+#define LED2_OFF PORTB &= ~(1U << LED2)                  // Disable LED2.
+#define LEDS_OFF PORTB &= ~((1U << LED1) | (1U << LED2)) // Disable both LEDs.
+#define BTN1_PRESSED (PINB & (1U << BTN1))               // High if BTN1 is pressed, low otherwise.
+
+/** Time parameters. */
+#define TIMEOUT_MS 100U                            // Timeout in ms.
+#define TICK_PERIOD_MS 0.064F                      // Tick period, prescaler 1024.
+#define CMP_MAX (TIMEOUT_MS / TICK_PERIOD_MS - 1U) // Compare value.
+#define TICK_MAX (uint16_t)(CMP_MAX + 0.5F)        // Rounded compare value.
+
+/** LED state (true = enabled, false = disabled). */
+static volatile bool led_state = false;
+
+/** True if LED1 is lit, false otherwise. */
+static volatile bool led1_lit = false;
+
+/**
+ * @brief Set up system.
+ */
+static void setup(void)
+{
+    // Configure LED1 and LED2 as outputs.
+    DDRB = (1U << LED1) | (1U << LED2);
+
+    // Configure BTN1 as input with its internal pull-up enabled.
+    PORTB = (1U << BTN1);
+
+    // Enable pin change interrupt for BTN1.
+    PCICR  = (1U << PCIE0);
+    PCMSK0 = (1U << BTN1);
+
+    // Enable timer 1 in CTC mode, set timeout to 100 ms.
+    TCCR1B = (1U << CS10) | (1U << CS12) | (1U << WGM12);
+    OCR1A  = TICK_MAX;
+    TIMSK1 = (1U << OCIE1A);
+
+    // Enable interrupts globally.
+    sei();
+}
+
+/**
+ * @brief Toggle the LEDs on button press.
+ */
+ISR(PCINT0_vect)
+{
+    if (BTN1_PRESSED)
+    {
+        led_state = !led_state;
+        if (!led_state) { LEDS_OFF; }
+    }
+}
+
+/**
+ * @brief Alternate which of the two LEDs is lit if enabled.
+ */
+ISR(TIMER1_COMPA_vect)
+{
+    // Check the LED state, terminate if disabled.
+    if (!led_state) { return; }
+
+    // Alternate which LED is lit.
+    led1_lit = !led1_lit;
+
+    if (led1_lit)
+    {
+        LED1_ON;
+        LED2_OFF;
+    }
+    else
+    {
+        LED1_OFF;
+        LED2_ON;
+    }
+}
+
+/**
+ * @brief Application entry point.
+ *
+ * @return 0 on termination of the program (should never occur).
+ */
+int main(void)
+{
+    setup();
+    while (true) {}
+    return 0;
+}
+\end{ccode}
+
+\code{led_state} is \code{volatile} because it's shared: the button's ISR writes it and the timer's
+ISR reads it. That follows the book's rule of making anything shared with an ISR \code{volatile},
+although between two ISRs the qualifier is, strictly, the same harmless habit as on the
+\code{ovf_count} of \secref{c5:a:4}: on the AVR an ISR runs to completion with interrupts
+disabled, so nothing can change \code{led_state} in the middle of one, and each ISR reads it afresh
+every time it runs. It becomes load-bearing the moment \code{main()}'s loop reads it too.
+\code{led1_lit} is only ever touched by the timer's ISR, so it could just as well be a
+\code{static} local inside it, like \code{ovf_count}.
+
+Timer 2 mirrors Timer 0 (8-bit, Normal/CTC), with one gotcha: its \textdiv1024 prescaler bit
+pattern is \code{111}, not \code{101} as on Timers 0/1.

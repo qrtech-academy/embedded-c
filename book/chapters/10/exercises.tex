@@ -1,0 +1,76 @@
+% Section 10.3, from lectures/L10/appendix/b_exercises.md.
+
+\section{Exercises}
+\label{c10:sec:exercises}\label{c10:app:b}
+
+\begin{aside}
+\textbf{How to work these.} The Reflection exercises are answered on paper, from the chapter. The
+Code exercises are programs for the board: build and flash them the way \secref{c2:app:c}
+(Microchip Studio) or \secref{c2:app:d} (Linux) describes, or run them in the simulator of
+Appendix~\ref{sim:ch} if you have no board yet.
+
+\textbf{How to check your work.} The Reflection exercises are answered in
+Appendix~\ref{app:answers}. The Code exercises have no printed solution: the board tells you
+whether a program does what the exercise describes. Try each exercise before you read its answer.
+\end{aside}
+
+% ------------------------------------------------------------------------------------------
+\exerciseset{Concepts}
+\label{c10:set:1}
+
+\reflexercise{Only a forward declaration}
+\label{c10:ex:1}
+Why does \file{gpio.h} only forward-declare \code{gpio_t} (\code{typedef struct gpio gpio_t;})
+instead of including the full field list? What would go wrong, from an encapsulation standpoint, if
+\code{struct gpio { ... };} were written directly in the header instead?
+
+\reflexercise{When \code{malloc()} fails}
+\label{c10:ex:2}
+\code{gpio_create()} returns \code{NULL} when \code{malloc()} fails instead of, say, overwriting
+the first GPIO it ever created. Why does that matter, and what should calling code do with the
+return value?
+
+% ------------------------------------------------------------------------------------------
+\exerciseset{Program}
+\label{c10:set:2}
+
+\codeexercise{Active-low GPIOs}
+\label{c10:ex:3}
+Add a second behavior to \secref{c10:a:2}'s driver: \code{static} functions
+\code{gpio_write_inverted()}, \code{gpio_read_inverted()}, and \code{gpio_toggle_inverted()} that
+treat the pin as active-low (a \code{true} write clears the bit rather than setting it), plus a
+second \code{gpio_init_inverted(gpio_t* self, uint8_t pin, gpio_mode_t mode)} that behaves like
+\code{gpio_init()} but wires a \code{gpio_t}'s pointers to these instead of the originals. Confirm
+the same \code{led1.write(&led1, true)} call site now does the opposite, with no change to any
+calling code, only which functions \code{gpio_init_inverted()} wired up.
+
+\codeexercise{An opaque timer}
+\label{c10:ex:4}
+Make Chapter~\ref{c9:ch}'s \code{timer_t} opaque: move \code{struct timer { ... };} into a
+\file{timer.c} file, expose only \code{typedef struct timer timer_t;} plus prototypes for
+\code{timer_create()}, \code{timer_clear()}, \code{timer_running()}, \code{timer_start()},
+\code{timer_stop()}, \code{timer_toggle()}, and \code{timer_reset()}, from \mbox{\file{timer.h}}.
+\code{timer_create(uint32_t timeout_ms, timer_callback_t callback)} should
+follow \code{gpio_create()}'s allocation pattern from \secref{c10:a:3}, since an opaque
+\code{timer_t} can no longer be declared and passed by address the way Exercise~\ref{c9:ex:6}'s
+\code{timer_init(timer_t* self, uint32_t timeout_ms, timer_callback_t callback)} expected.
+
+\codeexercise{A button callback for real}
+\label{c10:ex:5}
+Wire up \secref{c10:a:4}'s \code{button_t} for real: create one \code{gpio_t} configured as a
+button input and another as an LED output, then set \code{on_press} to a function that calls
+\code{gpio_toggle()} on the LED. \code{button_check()}'s own code should never mention the LED's
+\code{gpio_t} by name. See \secref{c10:a:5} for a fully wired, interrupt-driven version of this
+same idea.
+
+\codeexercise{Testing through the stub}
+\label{c10:ex:6}
+Capstone, harder. \code{gpio_stub_new()} (\secref{c10:a:6}) exists specifically so GPIO-dependent
+logic can be exercised without a chip attached. Write a small test that creates a
+\code{gpio_interface_t*} via \code{gpio_stub_new()} alone, no \code{gpio_atmega328p_new()}, no
+hardware, and confirms \code{write()}/\code{read()}/\code{toggle()} behave correctly purely through
+the interface (write \code{true}, read back \code{true}, \code{toggle()} flips it to
+\code{false}). Then write a third implementation, one that logs every \code{write()}/%
+\code{toggle()} call before updating its own \code{state}, and confirm \file{main.c}'s
+edge-detection logic (\secref{c10:a:6}) works against it completely unmodified, just by changing
+which \code{gpio_interface_t*} gets created.

@@ -1,0 +1,45 @@
+% Section 6.2, from lectures/L06/README.md: the goals, the evaluation questions, and the next
+% lecture.
+
+\needspace{12\baselineskip}
+\section{Review}
+\label{c6:sec:review}
+
+\needspace{6\baselineskip}
+\subsection*{What you should be able to do now}
+After this chapter, you should be able to:
+\begin{itemize}
+  \item Explain what baud rate is and compute \code{UBRR0} for a given clock and baud rate.
+  \item Write a byte, and then a whole string, over UART.
+  \item Combine \code{sprintf()} with UART transmission to report a mix of text and numeric data.
+  \item Understand why the code waits on \code{UDRE0} before writing a new byte.
+  \item Receive a byte over UART and explain how \code{RXC0} mirrors \code{UDRE0}.
+\end{itemize}
+
+\needspace{6\baselineskip}
+\subsection*{Questions to test yourself}
+\begin{enumerate}
+  \item What does the \code{UDRE0} flag represent, and what would happen if
+    \code{serial_write_byte()} didn't wait for it?
+  \item Compute \code{UBRR0} for 19200 baud at a 16\,MHz clock.
+  \item Why is \code{sprintf()} used to build a message before transmitting it, rather than trying
+    to transmit an \code{int} directly?
+  \item What does \code{RXC0} represent, and what would \code{serial_read_byte()} do if it didn't
+    wait for it?
+\end{enumerate}
+
+\needspace{6\baselineskip}
+\subsection*{Looking ahead}
+This chapter closes the introductory arc:
+\begin{itemize}
+  \item C fundamentals (Chapter~\ref{c1:ch}).
+  \item Digital I/O and bit manipulation (Chapter~\ref{c2:ch}).
+  \item Reacting to events instead of polling for them (Chapter~\ref{c3:ch}).
+  \item Reading the analog world (Chapter~\ref{c4:ch}).
+  \item Timing without blocking (Chapter~\ref{c5:ch}).
+  \item Reporting back to a PC (this chapter).
+\end{itemize}
+Chapter~\ref{c7:ch} rounds out the peripheral survey with EEPROM, and Chapter~\ref{c8:ch} covers
+the watchdog timer. A follow-on arc on driver design starts after that: bundling a peripheral's
+state into a struct instead of one-off macros and globals, building directly on the LEDs, buttons,
+and timers from these six chapters.

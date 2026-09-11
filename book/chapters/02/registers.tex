@@ -1,0 +1,304 @@
+% Section 2.1, from lectures/L02/appendix/a_registers_and_io.md.
+
+\section{Registers and I/O}
+\label{c2:sec:registers}\label{c2:app:a}
+
+\subsection{What's different about embedded}
+\label{c2:a:1}
+\begin{itemize}
+  \item A microcontroller (MCU) is a complete computer with no screen or keyboard; I/O happens
+    through pins wired to sensors and actuators (buttons, LEDs, motors, sensors).
+  \item Your code is still compiled to machine code, but there's no OS between you and the
+    hardware; you write directly to memory-mapped registers.
+  \item C is the default choice here: predictable, tiny memory footprint, close to the metal, and
+    still far more productive than assembly. A very skilled assembly programmer can occasionally
+    beat a modern compiler, but rarely by much, and it's almost never worth it.
+\end{itemize}
+
+\subsection{The board: Arduino Uno/Nano}
+\label{c2:a:2}
+Either board works for this book: same \textbf{ATmega328P} chip, same registers, same
+PIN$\leftrightarrow$PORT mapping for D0--D13 and A0--A5. The Nano just adds two extra analog-only
+pins (A6, A7) and drops the barrel power jack.
+
+The ATmega328P is an 8-bit AVR microcontroller with three I/O ports, each covering a group of pins:
+
+\begin{narrowtable}{@{}ll@{}}
+  \thead{Board pin} & \thead{Register port} \\
+  \midrule
+  D0--D7 & \code{PORTD0}--\code{PORTD7} \\
+  D8--D13 & \code{PORTB0}--\code{PORTB5} \\
+  A0--A5 & \code{PORTC0}--\code{PORTC5} \\
+\end{narrowtable}
+
+\bookimage[0.3]{lectures/L02/appendix/images/arduino_uno_pinout.png}{The Arduino Uno: digital pins
+D0--D13 along the top edge, analog pins A0--A5 along the bottom.}{c2:fig:uno}
+
+\noindent Here's the Nano for direct comparison: different board outline and a Mini-USB connector
+instead of the Uno's USB-B, but the same D0--D13/A0--A5 pin numbering and the same ATmega328P
+underneath:
+
+\bookimage[0.45]{lectures/L02/appendix/images/arduino_nano_pinout.png}{The Arduino Nano: the same
+pin numbering, plus the analog-only pins A6 and A7.}{c2:fig:nano}
+
+\noindent\code{PORTB} and \code{PORTD} are purely digital I/O. \code{PORTC} is the analog-capable
+port (used with the ADC, Chapter~\ref{c4:ch}) but behaves as ordinary digital I/O when you're not
+doing analog reads.
+
+For consistency, every breadboard circuit diagram in this section (and in \secref{c2:app:c}) shows
+an Arduino Uno. If you're using a Nano, wire it the same way: same chip, same D0--D13/A0--A5 pin
+numbering, the only difference is the board outline and USB connector in the picture.
+
+\subsection{Bitwise operations (this is the whole game)}
+\label{c2:a:3}
+There's no \code{digitalWrite()} here; you write directly to registers, and a register is just a
+byte, so every pin operation is a bitwise operation on that byte.
+
+\begin{booktable}{@{}p{5.4em}p{6.4em}L@{}}
+  \thead{Operation} & \thead{C operator} & \thead{Effect} \\
+  \midrule
+  OR & \code{|} & sets one or more bits, leaves the rest (``bitwise addition'') \\
+  AND & \code{&} & reads a bit, or (with NOT) clears one (``bitwise multiplication'') \\
+  NOT & \code{~} & inverts every bit \\
+  XOR & \code{^} & clears matching bits, sets differing bits \\
+  NOR & \code{~(a | b)} & inverse of OR: bit set only where both operands are 0 \\
+  NAND & \code{~(a & b)} & inverse of AND: bit set unless both operands are 1 \\
+  XNOR & \code{~(a ^ b)} & inverse of XOR: bit set where operands match \\
+\end{booktable}
+
+\noindent There's no single C operator for NOR/NAND/XNOR; you get them by combining \code{~} with
+\code{|}/\code{&}/\code{^} as shown above. Don't confuse NAND with the clear-bit idiom below:
+\code{reg &= ~mask} is AND with a \emph{negated mask}, not a NAND of \code{reg} and \code{mask};
+those are different operations that happen to both involve \code{~} and \code{&}:
+\begin{itemize}
+  \item Set bit 3 without touching the rest: \code{reg |= 0b00001000;}
+  \item Clear bit 3 without touching the rest: \code{reg &= ~0b00001000;}
+\end{itemize}
+
+\subsubsection{Shifting}
+\code{1U << n} puts a single \code{1} in bit position \code{n}; this is how you address ``which
+pin'' without hand-writing the bit pattern:
+
+\begin{ccode}
+#define LED1 1U         // D9 -> PORTB1.
+PORTB |= (1U << LED1);  // Enable LED1.
+PORTB &= ~(1U << LED1); // Disable LED1.
+\end{ccode}
+
+\noindent\code{x << n} and \code{x >> n} are also multiply/divide by \code{2^n}, if you ever need
+that framing.
+
+\subsection{Driving an output, reading an input}
+\label{c2:a:4}
+\begin{itemize}
+  \item \code{DDRx} (\textbf{D}ata \textbf{D}irection \textbf{R}egister) decides, per bit, whether a
+    pin is an output (\code{1}) or input (\code{0}).
+  \item On an output pin, \code{PORTx} sets the pin high/low.
+  \item On an input pin, \code{PORTx} instead enables (\code{1}) or disables (\code{0}) the internal
+    pull-up resistor. With it enabled, the pin reads a clean \code{1} when unconnected/floating and
+    \code{0} when pulled to ground, instead of floating unpredictably.
+  \item To read the actual input level, read \code{PINx} (not \code{PORTx}).
+\end{itemize}
+
+\begin{ccode}
+#define BTN1 5U                               // D13 -> PORTB5
+#define BTN1_PRESSED (PINB & (1U << BTN1)) // High if BTN1 is pressed, low otherwise.
+\end{ccode}
+
+\noindent The button circuit used in \secref{c2:a:5} and \secref{c2:a:6} doesn't actually rely on
+this internal pull-up: it wires an \textbf{external pull-down} resistor instead (one leg of the
+button to 5\,V, the other leg to D13 and, through a 10\,k\textohm{} resistor, to GND). That means
+D13 reads \code{0} when idle and \code{1} when pressed, the opposite of the internal-pull-up pattern
+described above. The code still enables the internal pull-up anyway (\code{PORTB = (1U << BTN1);}),
+so you see \code{PORTx}'s input-mode behavior used directly, but it isn't what makes this circuit
+work. It's harmless in practice: the internal pull-up and the external 10\,k\textohm{} pull-down
+form a voltage divider, and with the internal resistor's typical value of around 35\,k\textohm{}
+the idle pin sits near 1.1\,V, comfortably below the 1.5\,V ($0.3 \times 5$\,V) under which a pin
+is guaranteed to read \code{0}. It isn't guaranteed, though: the datasheet only promises
+20--50\,k\textohm, and at 20\,k\textohm{} the idle pin rises to about 1.7\,V, where the reading is
+undefined. In a design of your own, don't enable a pull-up against an external pull-down.
+
+\subsection{First program: LED follows a button}
+\label{c2:a:5}
+An LED is connected to D9, and a button is connected to D13. The button is continuously polled:
+\begin{itemize}
+  \item The LED is enabled if the button is pressed.
+  \item The LED is disabled if the button isn't pressed.
+\end{itemize}
+
+\bookimage{lectures/L02/appendix/images/circuit_led_follows_button.png}{An LED on D9 and a button on
+D13, with its 10\,k\textohm{} pull-down resistor to GND.}{c2:fig:ledbutton}
+
+\begin{ccode}
+#include <avr/io.h>
+
+/** GPIO pins. */
+#define LED1 1U // D9  -> PORTB1.
+#define BTN1 5U // D13 -> PORTB5.
+
+/** GPIO operations. */
+#define LED1_ON PORTB |= (1U << LED1)         // Enable LED1.
+#define LED1_OFF PORTB &= ~(1U << LED1)       // Disable LED1.
+#define BTN1_PRESSED (PINB & (1U << BTN1)) // High if BTN1 is pressed, low otherwise.
+
+/**
+ * @brief Set up system.
+ */
+static void setup(void)
+{
+    // Configure LED1 as output.
+    DDRB = (1U << LED1);
+
+    // Configure BTN1 as input with its pull-up enabled.
+    PORTB = (1U << BTN1);
+}
+
+/**
+ * @brief Application entry point.
+ *
+ * @return 0 on termination of the program (should never occur).
+ */
+int main(void)
+{
+    setup();
+
+    while (1)
+    {
+        // Read BTN1, enable LED1 if pressed, disable if not.
+        if (BTN1_PRESSED) { LED1_ON; }
+        else { LED1_OFF; }
+    }
+    return 0;
+}
+\end{ccode}
+
+\noindent\code{LED1_ON}, \code{LED1_OFF}, and \code{BTN1_PRESSED} are the object-like macros covered
+in \secref{c1:a:12}: plain text substitution, with no parameters. \code{BTN1_PRESSED} is used as a
+value, inside a condition, so its whole body is parenthesized and it behaves correctly no matter
+what surrounds it at the call site. \code{LED1_ON} and \code{LED1_OFF} are complete statements,
+only ever used on their own, followed by a \code{;}.
+
+You'll see a Doxygen comment above every non-trivial function throughout this codebase, written in
+the imperative mood (``Configure\dots'', ``Compute\dots'', not ``Configures\dots'' or ``This
+function configures\dots'').
+
+\subsection{Blinking two LEDs, with a hand-rolled delay}
+\label{c2:a:6}
+LEDs on D9/D10 alternate every 200\,ms while the button on D13 is held; both off otherwise.
+
+\bookimage{lectures/L02/appendix/images/circuit_two_led_blink.png}{Two LEDs on D9 and D10, and the
+button on D13.}{c2:fig:twoleds}
+
+\begin{ccode}
+#define F_CPU 16000000UL // CPU frequency in Hz.
+
+#include <stdint.h>
+
+#include <avr/io.h>
+#include <util/delay.h>
+
+/** GPIO pins. */
+#define LED1 1U // D9  -> PORTB1.
+#define LED2 2U // D10 -> PORTB2.
+#define BTN1 5U // D13 -> PORTB5.
+
+/** GPIO operations. */
+#define LED1_ON PORTB |= (1U << LED1)      // Enable LED1.
+#define LED1_OFF PORTB &= ~(1U << LED1)    // Disable LED1.
+#define LED2_ON PORTB |= (1U << LED2)      // Enable LED2.
+#define LED2_OFF PORTB &= ~(1U << LED2)    // Disable LED2.
+#define BTN1_PRESSED (PINB & (1U << BTN1)) // High if BTN1 is pressed, low otherwise.
+
+/** Time parameters. */
+#define TICK_1MS 1U         // Generate 1 ms tick in delay_ms().
+#define BLINK_SPEED_MS 200U // Blink speed in ms.
+
+/**
+ * @brief Set up system.
+ */
+static void setup(void)
+{
+    // Configure LED1 and LED2 as outputs.
+    DDRB = (1U << LED1) | (1U << LED2);
+
+    // Configure BTN1 as input with its internal pull-up enabled.
+    PORTB = (1U << BTN1);
+}
+
+/**
+ * @brief Generate delay.
+ *
+ * @param[in] ms Delay duration in ms.
+ */
+static void delay_ms(const uint16_t ms)
+{
+    for (uint16_t i = 0U; i < ms; ++i)
+    {
+        _delay_ms(TICK_1MS);
+    }
+}
+
+/**
+ * @brief Blink the LEDs.
+ *
+ * @param[in] blink_speed_ms Blink speed in ms.
+ */
+static void led_blink(const uint16_t blink_speed_ms)
+{
+    // Enable LED1, disable LED2.
+    LED1_ON;
+    LED2_OFF;
+    delay_ms(blink_speed_ms);
+
+    // Disable LED1, enable LED2.
+    LED1_OFF;
+    LED2_ON;
+    delay_ms(blink_speed_ms);
+}
+
+/**
+ * @brief Turn both LEDs off.
+ */
+static void leds_off(void)
+{
+    LED1_OFF;
+    LED2_OFF;
+}
+
+/**
+ * @brief Application entry point.
+ *
+ * @return 0 on termination of the program (should never occur).
+ */
+int main(void)
+{
+    setup();
+
+    while (1)
+    {
+        // Read BTN1, blink the LEDs if pressed, disable both LEDs if not.
+        if (BTN1_PRESSED) { led_blink(BLINK_SPEED_MS); }
+        else { leds_off(); }
+    }
+    return 0;
+}
+\end{ccode}
+
+\noindent A few things worth noting:
+\begin{itemize}
+  \item \code{F_CPU} must be \code{#define}d \emph{before} including \code{<util/delay.h>}, since
+    the delay functions compute their loop counts from the clock frequency at compile time.
+    \code{int} is only 16 bits on this target, far too small for 16{,}000{,}000; the \code{UL}
+    suffix makes the constant an \code{unsigned long} explicitly, rather than leaving its type to
+    C's rules for unsuffixed constants.
+  \item \code{<stdint.h>} is included explicitly for \code{uint16_t}, even though \code{<avr/io.h>}
+    happens to pull it in already; include what you directly use rather than relying on a header's
+    own includes, which can change.
+  \item \code{_delay_ms()} only accepts a compile-time constant or macro as its argument, not a
+    variable, so it can't take \code{ms} directly. \code{delay_ms()} works around this by calling
+    \code{_delay_ms(TICK_1MS)} in a loop, incrementing a local counter each pass until it reaches
+    \code{ms}.
+  \item \code{_delay_ms()} (and by extension \code{delay_ms()}) \textbf{blocks} the entire program
+    while it waits, fine for this example, but this exact limitation is what the timers chapter,
+    Chapter~\ref{c5:ch}, exists to solve.
+\end{itemize}

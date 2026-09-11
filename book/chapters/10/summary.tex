@@ -1,0 +1,48 @@
+% Section 10.2, from lectures/L10/README.md: the goals, the evaluation questions, and the next
+% lecture.
+
+\needspace{10\baselineskip}
+\section{Review}
+\label{c10:sec:review}
+
+\subsection*{What you should be able to do now}
+After this chapter, you should:
+\begin{itemize}
+  \item Explain how \code{static} restricts a function's visibility to its own file, and why that's
+    a different kind of encapsulation than hiding struct fields.
+  \item Explain what an opaque struct is and why hiding a struct's definition in a \file{.c} file
+    protects its invariants.
+  \item Be able to declare, assign, and call through a function pointer, including one stored in a
+    struct field.
+  \item Be able to design a small vtable-style interface and provide more than one implementation
+    of it.
+  \item Understand, at a high level, how this manual pattern relates to virtual dispatch in
+    higher-level languages.
+\end{itemize}
+
+\needspace{6\baselineskip}
+\subsection*{Questions to test yourself}
+\begin{enumerate}
+  \item What stops calling code from calling the \code{static} \code{gpio_write()} in
+    \secref{c10:a:2}'s \file{gpio.c} directly by name, and what does it \emph{not} stop it from
+    doing to \code{led1.write} or \code{led1.pin}?
+  \item Why can't code outside \file{timer.c} read or write a \code{timer_t}'s fields directly,
+    once \code{timer_t} is made opaque?
+  \item What does \code{void (*on_press)(void);} declare, and how would you call it?
+  \item Why does the pin-change ISR only set a flag instead of calling the callback directly?
+  \item What problem does a vtable-style interface solve that hardcoding a single GPIO
+    implementation doesn't?
+\end{enumerate}
+
+\needspace{6\baselineskip}
+\subsection*{Looking ahead}
+\begin{itemize}
+  \item This closes the driver-design arc (Chapters~\ref{c9:ch} and~\ref{c10:ch}), built on the
+    peripherals covered in Chapters~\ref{c1:ch}--\ref{c8:ch}.
+  \item Everything here, opaque structs, function pointers, vtables, was C standing in for object
+    orientation. The next step is Modern Embedded C++, where these patterns become language
+    features (classes, access specifiers, virtual functions) instead of conventions enforced by
+    hand.
+  \item Covered in a separate course, \emph{Modern Embedded C++}:
+    \url{https://github.com/qrtech-academy/modern-embedded-cpp}.
+\end{itemize}

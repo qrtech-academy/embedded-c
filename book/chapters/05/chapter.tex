@@ -1,0 +1,35 @@
+% Chapter 5, typeset from lectures/L05: the README is the opener and the closing review, the
+% lecture's Appendix A is the chapter's one section of material, and Appendix B its exercises.
+
+\chapter{Timers}
+\label{c5:ch}
+
+{\large\itshape Letting the hardware keep time, so the CPU is free to do something else.\par}
+
+\begin{chapterbox}{In this chapter}
+\begin{itemize}
+  \item Why \code{_delay_ms()} doesn't scale, and what a hardware timer gives you instead.
+  \item The prescaler math: from CPU clock to tick period to interrupt count.
+  \item Normal Mode vs.\ CTC Mode.
+  \item Worked example: non-blocking LED blink using Timer 0 (Normal Mode).
+  \item Timer 1 in CTC Mode: hitting an arbitrary period directly.
+\end{itemize}
+\end{chapterbox}
+
+Every delay so far has been a busy-wait. This chapter explains why a busy-wait delay
+(\code{_delay_ms}) is unsuitable once a program needs to do more than one thing at a time, and
+replaces it with the chip's hardware timers. You will compute a timer's tick period from the CPU
+clock and a chosen prescaler, work out how many overflow interrupts an 8-bit timer needs for a
+given delay, and learn the practical difference between Normal Mode and CTC Mode, and when you'd
+reach for each. Along the way the chapter returns to \code{volatile}, and to why a variable shared
+between an ISR and \code{main()} needs it.
+
+Read \secref{c5:sec:timers} first: it is the chapter's core material, with its worked examples.
+Then work the exercises in \secref{c5:sec:exercises}. The Reflection and Calculation exercises,
+and the questions some Code exercises ask, are answered in Appendix~\ref{app:answers}; the Code
+exercises themselves have no printed solution, because the board tells you whether a program does
+what the exercise asks.
+
+\input{chapters/05/timers}
+\input{chapters/05/summary}
+\input{chapters/05/exercises}

@@ -1,0 +1,64 @@
+% Answers to Chapter 4's exercises, lectures/L04/appendix/b_exercises.md. The book's own answers:
+% the lecture publishes none.
+\answerchapter{4}{Analog-to-Digital Conversion}
+
+\answer{c4:ex:1}
+Invert the chapter's mapping, \code{result = 1023 * (V_in / V_ref)}:
+\[
+  V_\text{in} = \frac{\text{reading} \times V_\text{ref}}{1023}
+    = \frac{768 \times 5\,\text{V}}{1023} = \frac{3840}{1023}\,\text{V} \approx 3.754\,\text{V}.
+\]
+Check: $1023 \times 3.754 / 5 = 768.1$, which rounds back to 768. The datasheet's form, with 1024,
+gives $768 \times 5 / 1024 = 3.750$\,V, less than one step (about 5\,mV) away.
+
+\answer{c4:ex:2}
+The ADC is a successive-approximation converter. It samples the input onto a small capacitor, then
+decides the result one bit per ADC clock cycle, comparing the held voltage against a trial voltage
+generated inside the converter, and its analog circuitry needs time to settle at each step. The
+datasheet therefore asks for an ADC clock between 50 and 200\,kHz for full 10-bit resolution. The
+CPU runs at 16\,MHz, 80 times the upper limit, and slowing the whole CPU down to suit one
+peripheral is not an option; so the ADC has a prescaler of its own, the \code{ADPS2:0} bits of
+\code{ADCSRA}, which divides the system clock for the ADC alone. At 16\,MHz, \textdiv128
+(125\,kHz) is the only setting that lands in range; \textdiv64 already gives 250\,kHz.
+
+At the full 16\,MHz a conversion would finish sooner, but accuracy would collapse: the sampling
+capacitor and the comparator would get far too little time to settle, so the lower bits would turn
+into noise, readings would jump around and drift from the true voltage, and at 80 times the limit
+little of the 10 bits would be left. (The prescaler cannot in fact divide by less than 2, so
+8\,MHz is the fastest the ADC can be clocked, still 40 times too fast.)
+
+\answer{c4:ex:3}
+\code{MUX0}, bit 0 of \code{ADMUX}. The channel number is written into \code{MUX3:0}, the low four
+bits: \code{A0} is channel 0 (\code{0000}) and \code{A1} is channel 1 (\code{0001}), so moving from
+\code{A0} to \code{A1} sets \code{MUX0} and leaves \code{REFS1:REFS0}, the \code{AVCC} reference,
+as they are. With \code{adc_read()} that is simply a call with \code{channel} set to 1.
+
+\answer{c4:ex:4}
+Setting \code{ADSC} only \emph{starts} a conversion. The conversion takes 13 ADC clock cycles, or
+25 for the first one after the ADC is enabled; at 125\,kHz that is 104\,\textmu s or 200\,\textmu s,
+1,664 or 3,200 CPU cycles, while the CPU reaches the next statement after one or two. Until the
+conversion ends, \code{ADC} still holds the previous conversion's result, or 0 if there has been
+none, so reading it straight away returns an old value, not the one just asked for. The hardware
+sets \code{ADIF} at the moment the conversion completes and its result is in
+\code{ADCL}/\code{ADCH}, so waiting for \code{ADIF} is waiting for the result that belongs to this
+conversion. (\code{ADSC} reads as 1 while a conversion is in progress, so waiting for it to clear
+works too, and the ADC interrupt does the same without polling.)
+
+\answer{c4:ex:6}
+It would not crash; it would quietly return 0 from every read. The reason is the statement that
+follows the wait: \code{ADCSRA = (1U << ADIF);} writes the whole register, not just the flag, and
+every bit written as 0 is cleared, \code{ADEN} included. Writing \code{ADEN} to zero switches the
+ADC off, and the datasheet is explicit that switching it off while a conversion is in progress
+terminates that conversion. Without the wait, this statement runs a few CPU cycles after the
+conversion was started, about 3,200 cycles before it could have finished (a conversion started
+together with \code{ADEN} takes 25 ADC clock cycles). So every conversion is aborted: none ever
+completes, sets \code{ADIF}, or writes \code{ADCL}/\code{ADCH}. \code{return ADC;} then reads a data
+register that no conversion has ever written, and returns its reset value, 0, on every call,
+whatever the potentiometer says.
+
+Nothing illegal happens and the program runs exactly as before, only on wrong data. In the program
+of \secref{c4:a:4}, every duty cycle is 0, \code{on_ms} is 0 and \code{off_ms} is 10, so the LED
+stays dark whenever reading is enabled, which looks more like a wiring fault than a software one.
+(Had the flag been cleared without switching the ADC off, the wait's absence would show up
+differently: each read would return the result of the conversion before it, one reading behind,
+which is stale data that is even harder to spot.)

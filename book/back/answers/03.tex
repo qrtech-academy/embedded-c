@@ -1,0 +1,64 @@
+% Answers to Chapter 3's exercises, lectures/L03/appendix/b_exercises.md. The book's own answers:
+% the lecture publishes none.
+\answerchapter{3}{Interrupts}
+
+\answer{c3:ex:1}
+Polling makes the main loop ask every input, on every pass, whether anything has happened. Each
+input added makes every pass longer, the CPU spends its time checking inputs that have not changed,
+and the reaction time to any one input is the time of a whole pass: while the loop is busy
+elsewhere, in a blocking delay say, a press is noticed late, and a pulse shorter than a pass can be
+missed altogether. An interrupt moves the watching into hardware: the pin logic detects the event
+and runs its ISR within a few clock cycles whatever \code{main()} is doing, so an input that is
+idle costs nothing, and the ISR only has to flag the event for \code{main()} to handle.
+
+\answer{c3:ex:2}
+\code{EICRA} configures \emph{what} triggers each external interrupt: its sense bits
+\code{ISCn1:ISCn0} choose low level, any change, falling edge or rising edge, for INT0 and INT1
+separately. \code{EIMSK} configures \emph{whether} each one is enabled at all: its \code{INT0} and
+\code{INT1} bits switch the two interrupts on. Neither register does the other's job, and neither
+replaces the global \code{I} bit in \code{SREG} that \code{sei()} sets.
+
+INT0 can be enabled without touching \code{EICRA}, but it will not do what you want.
+\code{EICRA} is 0 after a reset, so \code{ISC01:ISC00} is \code{00}: a low-level interrupt,
+requested for as long as the pin is held low. With the book's button wiring, D2 idles low (the
+external pull-down) and goes high only while the button is held, so INT0 fires continuously while
+the button is \emph{not} pressed: it is requested again the moment the ISR returns, and the CPU
+executes just one instruction of \code{main()} between two runs of it. In the toggle program of
+\secref{c3:a:3} the LED toggles hundreds of thousands of times a second and looks half-lit, and a
+press stops it in whichever state it happens to be in.
+
+\answer{c3:ex:4}
+Nothing is broken: the edge is the wrong one for this circuit. The button is wired with an external
+pull-down (\secref{c2:a:4}), so D2 reads low while the button is up and is pulled high while it is
+held down. A press is therefore a rising edge, low to high, and a release a falling edge, high to
+low. \code{ISC01:ISC00 = 10} selects the falling edge, so INT0 fires on the release, exactly as
+the colleague sees. Rising edge (\code{11}) is right for this wiring; a falling edge would mean the
+press only for a button wired the other way round, to ground against a pull-up. (Contact bounce can
+add stray edges in both directions, but the clean falling edge is the release.)
+
+\answer{c3:ex:5}
+D4 is \code{PORTD4}: port D, bit 4. Port D's formula is \code{PCINTx = PORTDx + 16}:
+\[
+  x = 4 + 16 = 20,
+\]
+so D4 is \code{PCINT20}. It belongs to port D's group, \code{PCIE2}/\code{PCMSK2}, whose
+interrupts all share \code{PCINT2_vect}. The three registers and bits to touch:
+\begin{itemize}
+  \item \code{PCICR}: set \code{PCIE2}, to enable pin change interrupts for port D's group.
+  \item \code{PCMSK2}: set bit 4, \code{PCINT20}, to select D4 within the group;
+    \code{(1U << PCINT20)} and \code{(1U << 4)} are the same bit.
+  \item \code{SREG}: set the global \code{I} bit, with \code{sei()}.
+\end{itemize}
+
+\answer{c3:ex:6}
+Keep a copy of the last \code{PINB} value in a \code{static} byte. On each interrupt, read
+\code{PINB} once and XOR it with the copy: the bits that are 1 in the result are the pins that
+changed since the last interrupt. AND-ing that with the new reading keeps the pins that changed
+\emph{and} are now high, which with the book's wiring are the buttons just pressed; releases drop
+out. Test the two button bits, D11 (\code{PORTB3}) and D12 (\code{PORTB4}), in the result, set a
+\code{volatile} flag for each button found pressed, for \code{main()} to read and clear, and store
+the new reading as the copy.
+
+Only the button bits are tested, because \code{PINB} shows every pin of the port, the LED
+outputs included. A copy that starts at 0 matches two buttons idling low; initializing it from
+\code{PINB} in \code{setup()}, before \code{sei()}, also covers a button held down at start-up.

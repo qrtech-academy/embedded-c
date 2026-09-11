@@ -1,0 +1,57 @@
+% Section 8.3, from lectures/L08/appendix/b_exercises.md.
+
+\section{Exercises}
+\label{c8:sec:exercises}\label{c8:app:b}
+
+\begin{aside}
+\textbf{How to work these.} The Reflection exercise is answered on paper, from the chapter. The
+Code exercises are programs for the board: build and flash them the way \secref{c2:app:c}
+(Microchip Studio) or \secref{c2:app:d} (Linux) describes, or run them in the simulator of
+Appendix~\ref{sim:ch} if you have no board yet. The simulator is the quicker way to see a watchdog
+reset (\secref{sim:sec:watchdog}), though its reboot loop runs faster than the board's.
+
+\textbf{How to check your work.} The Reflection exercise is answered in
+Appendix~\ref{app:answers}. The Code exercises have no printed solution: the board tells you
+whether a program does what the exercise describes. Try each exercise before you read its answer.
+\end{aside}
+
+% ------------------------------------------------------------------------------------------
+\exerciseset{Concepts}
+\label{c8:set:1}
+
+\reflexercise{Why the watchdog is locked}
+\label{c8:ex:1}
+The watchdog's \code{WDE}/prescaler bits need the same \code{WDCE}-then-write-within-four-cycles
+pattern as EEPROM's \code{EEMPE}/\code{EEPE} (Chapter~\ref{c7:ch}). As with EEPROM, this isn't
+just a hardware quirk, it's a deliberate safety feature. What is it protecting against?
+
+% ------------------------------------------------------------------------------------------
+\exerciseset{Program}
+\label{c8:set:2}
+
+\codeexercise{A loop that is too slow}
+\label{c8:ex:2}
+Using \secref{c8:a:5}'s demo, add a \code{_delay_ms(1500)} (\code{<util/delay.h>}) inside
+\code{main()}'s loop, longer than the watchdog's configured 1024\,ms timeout. Confirm the board
+still resets on its own, even though \code{watchdog_reset()} is still called every iteration, just
+not often enough. Calling it somewhere in the code isn't enough; the loop has to actually get back
+around to it in time.
+
+\codeexercise{Every tenth press}
+\label{c8:ex:3}
+Capstone, harder. Combine EEPROM (Chapter~\ref{c7:ch}) and the watchdog: reduce EEPROM wear by
+only writing every 10th button press instead of every press. Keep a small \code{uint8_t} counter
+(not itself persisted) that tracks presses since the last EEPROM write, and only call
+\code{eeprom_write()} once it reaches \code{10}.
+
+\codeexercise{A warning before the reset}
+\label{c8:ex:4}
+Capstone, harder. \secref{c8:a:5}'s driver only supports System Reset Mode. Extend it yourself with
+Interrupt Mode (\secref{c8:a:4}):
+\begin{itemize}
+  \item Add a way to arm the watchdog with \code{WDIE} set instead of \code{WDE}, plus an
+    \code{ISR(WDT_vect)}.
+  \item Then combine both modes (\code{WDE} and \code{WDIE} together) so the first missed timeout
+    logs a warning over UART instead of resetting, and only a second consecutive missed timeout
+    actually resets the chip.
+\end{itemize}

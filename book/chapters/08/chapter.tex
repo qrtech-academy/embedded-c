@@ -1,0 +1,41 @@
+% Chapter 8, typeset from lectures/L08: the README is the opener and the closing review, the
+% lecture's Appendix A is a section with the same subsections, and its Appendix B, the exercises,
+% closes the chapter. The watchdog_driver_demo is typeset straight from its files in §8.1.5.
+
+\chapter{The Watchdog Timer}
+\label{c8:ch}
+
+{\large\itshape A second timer whose only job is to restart a program that has stopped.\par}
+
+\begin{chapterbox}{In this chapter}
+\begin{itemize}
+  \item The watchdog timer: a hardware safety net that resets the chip if the program stops
+    ``petting'' it.
+  \item Watchdog registers: \code{WDTCSR}, its own timed write sequence (\code{WDCE} then
+    \code{WDE}), and the \code{WDR} instruction.
+  \item Why a plain function is the right tool here: like EEPROM (Chapter~\ref{c7:ch}), the
+    watchdog is a singleton, there's exactly one on the chip.
+  \item \code{WDRF}, the flag that can lock \code{WDE} on after a watchdog reset, and System Reset
+    Mode vs.\ Interrupt Mode (\code{WDE} vs.\ \code{WDIE}).
+\end{itemize}
+\end{chapterbox}
+
+This chapter is about the last peripheral of the survey, and the only one whose job is to catch
+the program itself failing. After it you should be able to explain what the watchdog timer
+protects against, and to enable it, reset it, and observe what happens when it isn't reset in
+time.
+
+Read \secref{c8:sec:watchdog}, the substance of the chapter; its worked example adds the watchdog to
+the EEPROM demo of \secref{c7:a:4}. Then work the exercises in \secref{c8:sec:exercises}. The
+Reflection exercise is answered in Appendix~\ref{app:answers}; the Code exercises have no printed
+solution.
+
+The watchdog is the one topic in this book that's simpler to observe in simulation than on
+hardware: starve \code{watchdog_reset()} and the reboot loop shows up immediately, with no
+reflashing and no serial monitor. That is worth doing even with a board to hand, and the only
+option without one; the simulator guide of Appendix~\ref{sim:ch} walks through it in
+\secref{sim:sec:watchdog}.
+
+\input{chapters/08/watchdog}
+\input{chapters/08/summary}
+\input{chapters/08/exercises}

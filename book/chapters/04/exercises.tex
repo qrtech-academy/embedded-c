@@ -1,0 +1,78 @@
+% Section 4.3, from lectures/L04/appendix/b_exercises.md.
+
+\section{Exercises}
+\label{c4:sec:exercises}\label{c4:app:b}
+
+\begin{aside}
+\textbf{How to work these.} The Reflection and Calculation exercises are answered on paper, from
+the chapter. The Code exercises are programs for the board: build and flash them the way
+\secref{c2:app:c} (Microchip Studio) or \secref{c2:app:d} (Linux) describes, or run them in the
+simulator of Appendix~\ref{sim:ch} if you have no board yet.
+
+\textbf{How to check your work.} The Reflection and Calculation exercises are answered in
+Appendix~\ref{app:answers}. The Code exercises have no printed solution: the board tells you
+whether a program does what the exercise describes. Try each exercise before you read its answer.
+\end{aside}
+
+% ------------------------------------------------------------------------------------------
+\exerciseset{Concepts}
+\label{c4:set:1}
+
+\calcexercise{From reading to voltage}
+\label{c4:ex:1}
+A potentiometer reads \code{768} from \code{adc_read()}. Given a 5\,V reference, what voltage does
+that correspond to? Show the calculation.
+
+\reflexercise{The ADC's own prescaler}
+\label{c4:ex:2}
+Why does the ADC need its own clock prescaler, separate from the CPU's? What would you expect to
+happen to the reading's accuracy if the ADC ran at the full 16\,MHz CPU clock instead?
+
+% ------------------------------------------------------------------------------------------
+\exerciseset{Registers}
+\label{c4:set:2}
+
+\reflexercise{From A0 to A1}
+\label{c4:ex:3}
+Which single bit would you flip in \code{ADMUX} to read from \code{A1} instead of \code{A0},
+assuming the reference voltage stays the same?
+
+\reflexercise{Waiting for \code{ADIF}}
+\label{c4:ex:4}
+Explain, in your own words, why the code polls the \code{ADIF} flag in a \code{while} loop after
+starting a conversion, rather than reading \code{ADC} immediately after setting \code{ADSC}.
+
+% ------------------------------------------------------------------------------------------
+\exerciseset{Program}
+\label{c4:set:3}
+
+\codeexercise{A threshold switch}
+\label{c4:ex:5}
+Extend the PWM-brightness example of \secref{c4:a:4} so that, instead of software PWM, it simply
+lights the LED solid whenever the potentiometer reading exceeds \code{512}, and turns it off
+otherwise, a basic threshold switch with no PWM. Rewrite \code{run_pwm_cycle()} (rename it
+too; it's no longer PWM).
+
+\reflexercise{Removing the wait}
+\label{c4:ex:6}
+What would you expect to happen if the \code{while (0U == (ADCSRA & (1U << ADIF))) {}} wait were
+removed entirely from \code{adc_read()}? Would the program crash outright, or misbehave more
+subtly? Explain your reasoning.
+
+\codeexercise{Five dimmable LEDs}
+\label{c4:ex:7}
+Capstone. Extend the software-PWM approach of \secref{c4:a:4} to dim five LEDs from a single
+potentiometer, each individually switchable. LEDs on D6--D10, buttons on D2, D3, D11--D13 (D2/D3
+are \code{INT0}/\code{INT1} from Chapter~\ref{c3:ch}; D11--D13 share a Pin Change Interrupt, also
+from Chapter~\ref{c3:ch}):
+\begin{itemize}
+  \item Button D2 toggles LED D6, D3 toggles D7, D11 toggles D8, D12 toggles D9, D13 toggles D10.
+  \item Only LEDs currently ``on'' should respond to the potentiometer's duty cycle; ``off'' LEDs
+    stay dark no matter where the pot is turned.
+  \item Reuse \code{adc_read()} from \secref{c4:a:3} for the potentiometer reading and the
+    duty-cycle math from \secref{c4:a:4}. You'll need something to track which of the five LEDs
+    are enabled (five \code{bool}s, or a \code{uint8_t} bitmask with bitwise tests), and to drive
+    the on/off timing for all five within one PWM period instead of just one.
+\end{itemize}
+For a harder version: track the five enabled-flags in a \code{uint8_t} bitmask instead of separate
+\code{bool}s, and use bitwise operations to toggle and test each one.

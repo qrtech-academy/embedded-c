@@ -1,0 +1,326 @@
+% Section 2.2, from lectures/L02/appendix/c_arduino_via_microchip_studio.md.
+
+\section{Arduino via Microchip Studio}
+\label{c2:sec:studio}\label{c2:app:c}
+
+\subsection{Why this workflow}
+\label{c2:c:1}
+If you don't have a dedicated ISP programmer, you can still flash a Microchip Studio build onto the
+board: the Arduino bootloader already sits on the chip, and the Arduino IDE already knows the exact
+\code{avrdude} command line needed to talk to it over your board's COM port. The trick is simply to
+borrow that command line and point it at Microchip Studio's \code{.hex} output instead of the
+Arduino IDE's own. Everything below builds toward one reusable ``External Tool'' entry in Microchip
+Studio that does exactly that.
+
+\subsection{Wire the circuit}
+\label{c2:c:2}
+Same layout as the first example of \secref{c2:app:a}: LED anode on D9 (through a
+220--470\,\textohm{} resistor to ground, 330\,\textohm{} is a good middle value), button on D13
+(one leg to 5\,V, the other to ground through a 10\,k\textohm{} resistor, with D13 connected
+between the button and the resistor).
+
+\bookimage{lectures/L02/appendix/images/01_breadboard_wiring.png}{The circuit on the breadboard:
+the LED on D9 and the button on D13, with its pull-down resistor.}{c2:fig:wiring}
+
+\noindent Like the diagrams in \secref{c2:app:a}, this one shows an Arduino Uno. If you're using a
+Nano instead: same chip, same pin numbering, just a different board outline in the picture.
+
+\subsection{Build and test the sketch in Arduino IDE}
+\label{c2:c:3}
+This step uses the Arduino libraries (C++, an abstraction layer this book doesn't otherwise use)
+purely to get a known-working upload before touching Microchip Studio. Open the Arduino IDE, start
+a new sketch (\code{File → New}), and replace its contents with:
+
+\begin{cppcode}
+/** GPIO pins. */
+#define LED1 9U  // D9.
+#define BTN1 13U // D13.
+
+/**
+ * @brief Set up system.
+ */
+void setup()
+{
+    // Configure LED1 as output.
+    pinMode(LED1, OUTPUT);
+
+    // Configure BTN1 as input (the external 10 kOhm resistor pulls it down).
+    pinMode(BTN1, INPUT);
+}
+
+void loop()
+{
+    // Read BTN1, enable LED1 if pressed, disable if not.
+    if (digitalRead(BTN1)) { digitalWrite(LED1, HIGH); }
+    else { digitalWrite(LED1, LOW); }
+}
+\end{cppcode}
+
+\noindent This lights the LED on D9 while the button on D13 is held. It'll be rebuilt as real C in
+\secref{c2:c:7}.
+
+\code{pinMode()}, \code{digitalRead()}, and \code{digitalWrite()} are Arduino's abstraction over
+the register-level I/O \secref{c2:app:a} covers directly: \code{pinMode(pin, mode)} sets a pin
+\code{INPUT} or \code{OUTPUT} (a \code{DDRx} write), \code{digitalRead(pin)} returns
+\code{HIGH}/\code{LOW} for a pin's current level (a \code{PINx} read), and
+\code{digitalWrite(pin, value)} sets an output pin \code{HIGH} or \code{LOW} (a \code{PORTx} write).
+Underneath, the Arduino core implements all three with exactly the register operations from
+\secref{c2:app:a}, just hidden behind a function call and a pin-number lookup table.
+
+Turn on verbose upload logging, since the next step depends on reading \code{avrdude}'s exact
+command line out of it: \code{File → Preferences}, then check the box next to ``Show verbose output
+during: Upload''.
+
+\bookimage[0.95]{lectures/L02/appendix/images/02_file_menu_preferences.png}{The Arduino IDE's File
+menu, with Preferences.}{c2:fig:c02}
+
+\bookimage[0.95]{lectures/L02/appendix/images/03_preferences_verbose_upload.png}{The Preferences
+dialog, with verbose output turned on for upload.}{c2:fig:c03}
+
+\subsection{Install the board package, select the board and port}
+\label{c2:c:4}
+Install the AVR board package if it isn't already: \code{Tools → Board → Boards Manager}, then click
+Install on ``Arduino AVR Boards by Arduino'' (skip this if it's already installed, as in the
+screenshot below).
+
+\bookimage[0.95]{lectures/L02/appendix/images/04_tools_board_boards_manager_menu.png}{Tools, Board,
+Boards Manager.}{c2:fig:c04}
+
+\bookimage[0.95]{lectures/L02/appendix/images/05_boards_manager_installed.png}{The Boards Manager,
+with Arduino AVR Boards already installed.}{c2:fig:c05}
+
+\noindent With the board connected, select it: \code{Tools → Board → Arduino AVR Boards → Arduino
+Uno}. Then select its port: \code{Tools → Port}, and pick the COM port shown (e.g.\ COM4; the exact
+number doesn't matter and can vary by machine).
+
+\bookimage[0.95]{lectures/L02/appendix/images/06_tools_board_arduino_uno.png}{Selecting the Arduino
+Uno as the board.}{c2:fig:c06}
+
+\bookimage[0.95]{lectures/L02/appendix/images/07_tools_port_com4.png}{Selecting the board's port,
+here COM4.}{c2:fig:c07}
+
+\subsection{Upload and read back avrdude's command line}
+\label{c2:c:5}
+Click Upload in the top-left corner.
+
+\bookimage[0.95]{lectures/L02/appendix/images/08_upload_button.png}{The Upload button, the arrow in
+the top-left corner.}{c2:fig:c08}
+
+\noindent In the Output window (the black pane), scroll up to the line reading ``Compilation
+complete.'' and copy the \code{avrdude} command on the line beneath it; it should look something
+like:
+
+\begin{console}
+"C:\Users\eripih2001\AppData\Local\Arduino15\packages\arduino\tools\avrdude\6.3.0-arduino17/bin/avrdude"
+"-CC:\Users\eripih2001\AppData\Local\Arduino15\packages\arduino\tools\avrdude\6.3.0-arduino17/etc/avrdude.conf"
+-v -V -patmega328p -carduino "-PCOM4" -b115200 -D
+"-Uflash:w:C:\Users\ERIPIH~1\AppData\Local\Temp\arduino-sketch4CE86550DB8430968B53E52972DC68D2/Led1.ino.hex:i"
+\end{console}
+
+\bookimage[0.95]{lectures/L02/appendix/images/09_output_window_avrdude_command.png}{The avrdude
+command in the Output window, on the line after ``Compilation complete.''}{c2:fig:c09}
+
+\subsection{Turn it into a reusable command}
+\label{c2:c:6}
+This is the fiddliest part, but it's a one-time setup: reshaping that copied line into a
+command/arguments pair Microchip Studio's ``External Tools'' feature can invoke directly.
+\begin{enumerate}
+  \item Open Notepad, paste the copied path in, and strip out all the quotation marks. Save it as
+    \code{Arduino via Microchip Studio.txt}.
+  \item After \code{bin/avrdude}, press Enter twice so the rest of the path lands two lines down.
+  \item Add the extension \code{.exe} after \code{avrdude} on the top line.
+\end{enumerate}
+
+\bookimage[0.95]{lectures/L02/appendix/images/10_notepad_path_pasted.png}{The command in Notepad,
+its quotation marks removed and the avrdude path on a line of its own.}{c2:fig:c10}
+
+\bookimage[0.95]{lectures/L02/appendix/images/11_notepad_exe_appended.png}{\code{.exe} added after
+\code{avrdude} on the top line.}{c2:fig:c11}
+
+\begin{enumerate}[resume]
+  \item Far to the right on the second line, just before \code{-Uflash}, press Enter so the rest
+    lands on a new third line.
+  \item On the two bottom lines, add quotes around the two file paths (the ones starting with
+    \code{C:\\} and ending in \code{.conf} and \code{.hex} respectively). Afterward the two lines
+    should look roughly like:
+\end{enumerate}
+
+\begin{console}
+-C"C:\Users\eripih2001\AppData\Local\Arduino15\packages\arduino\tools\avrdude\6.3.0-arduino17/etc/avrdude.conf" -v -V -patmega328p -carduino -PCOM4 -b115200 -D
+-Uflash:w:"C:\Users\ERIPIH~1\AppData\Local\Temp\arduino-sketch4CE86550DB8430968B53E52972DC68D2/Led1.ino.hex":i
+\end{console}
+
+\bookimage[0.95]{lectures/L02/appendix/images/12_notepad_arguments_split.png}{The arguments split
+before \code{-Uflash}.}{c2:fig:c12}
+
+\bookimage[0.95]{lectures/L02/appendix/images/13_notepad_quotes_added.png}{Quotes added around the
+\code{.conf} and \code{.hex} paths.}{c2:fig:c13}
+
+\begin{enumerate}[resume]
+  \item Cut the file path on the bottom line (the part after \code{-Uflash}, between the quotes
+    ending in \code{.hex}) and paste in \code{$(ProjectDir)Debug\$(TargetName).hex} instead:
+    Microchip Studio expands these build-variable placeholders to the actual output path at run
+    time, so this line no longer needs to change per project.
+  \item Merge the two bottom lines back into one: click at the very start of the last line (right
+    before \code{-Uflash}) and press Backspace. Only two lines should remain in total. Save the
+    file.
+\end{enumerate}
+
+\bookimage[0.95]{lectures/L02/appendix/images/14_notepad_state_before_hex_replace.png}{The
+\code{.hex} path replaced by Microchip Studio's build variables.}{c2:fig:c14}
+
+\bookimage[0.95]{lectures/L02/appendix/images/15_notepad_hex_path_replaced.png}{The finished file:
+the Command on the top line, the Arguments below it.}{c2:fig:c15}
+
+\noindent You now have two lines: the \code{avrdude.exe} path (the \emph{Command}) and everything
+else (the \emph{Arguments}): ready to paste into Microchip Studio's External Tools dialog in
+\secref{c2:c:8}.
+
+\subsection{Recreate the program in Microchip Studio}
+\label{c2:c:7}
+Open Microchip Studio and create a new \textbf{GCC C Executable Project}, named \code{Led1}.
+
+\bookimage[0.95]{lectures/L02/appendix/images/16_new_project_dialog.png}{A new GCC C Executable
+Project, named Led1.}{c2:fig:c16}
+
+\noindent In the Device Selection dialog, choose \textbf{ATmega328P}.
+
+\bookimage[0.95]{lectures/L02/appendix/images/17_device_selection.png}{Choosing the ATmega328P in
+the Device Selection dialog.}{c2:fig:c17}
+
+\noindent Replace the contents of \file{main.c} with the real-C equivalent of the sketch from
+\secref{c2:c:3}, written to this codebase's conventions:
+
+\begin{ccode}
+#include <stdint.h>
+
+#include <avr/io.h>
+
+/** GPIO pins. */
+#define LED1 1U // D9  -> PORTB1.
+#define BTN1 5U // D13 -> PORTB5.
+
+/** GPIO operations. */
+#define LED1_ON PORTB |= (1U << LED1)         // Enable LED1.
+#define LED1_OFF PORTB &= ~(1U << LED1)       // Disable LED1.
+#define BTN1_IS_PRESSED (PINB & (1U << BTN1)) // High if BTN1 is pressed, low otherwise.
+
+/**
+ * @brief Set up system.
+ */
+static void setup(void)
+{
+    // Configure LED1 as output.
+    DDRB = (1U << LED1);
+
+    // Configure BTN1 as input with its pull-up enabled.
+    PORTB = (1U << BTN1); // D13 as input, pull-up enabled
+}
+
+/**
+ * @brief Application entry point.
+ *
+ * @return 0 on termination of the program (should never occur).
+ */
+int main(void)
+{
+    setup();
+
+    while (1)
+    {
+        // Read BTN1, enable LED1 if pressed, disable if not.
+        if (BTN1_IS_PRESSED) { LED1_ON; }
+        else { LED1_OFF; }
+    }
+    return 0;
+}
+\end{ccode}
+
+\noindent Then build it: \code{Build → Build Solution}.
+
+\bookimage[0.95]{lectures/L02/appendix/images/18_mainc_build_menu.png}{Build, Build
+Solution.}{c2:fig:c18}
+
+\noindent The screenshots for this walkthrough were taken against earlier drafts of the program:
+of the Arduino sketch in \secref{c2:c:3}--\ref{c2:c:5}, with other pin numbers, and of
+\file{main.c}, with plain (non-\code{static}) functions and no Doxygen comments. The \emph{code
+shown in the text} is what you should actually type in; the IDE mechanics (menus, dialogs, build steps) are otherwise
+identical.
+
+\subsection{Wire up the External Tool}
+\label{c2:c:8}
+Programming the chip externally requires the Advanced UI profile: \code{Tools → Select Profile},
+choose \textbf{Advanced}, then \textbf{Apply}.
+
+\bookimage[0.95]{lectures/L02/appendix/images/19_select_profile_menu.png}{Tools, Select
+Profile.}{c2:fig:c19}
+
+\bookimage[0.95]{lectures/L02/appendix/images/20_advanced_profile_dialog.png}{The Advanced
+profile.}{c2:fig:c20}
+
+\noindent Now create the External Tool entry: \code{Tools → External Tools}.
+
+\bookimage[0.95]{lectures/L02/appendix/images/21_external_tools_menu.png}{Tools, External
+Tools.}{c2:fig:c21}
+
+\noindent In the dialog that appears, click \textbf{Add}. Title it \code{Arduino} followed by the
+COM port used earlier in the Arduino IDE: e.g.\ \code{Arduino - COM4}. Paste the first line from
+\code{Arduino via Microchip Studio.txt} into \textbf{Command}, and the second line into
+\textbf{Arguments}. Check \textbf{Use Output Window}, then click \textbf{OK}.
+
+\bookimage[0.95]{lectures/L02/appendix/images/22_external_tools_arduino_com4.png}{The External
+Tools dialog with the Arduino - COM4 entry: its Command and its Arguments.}{c2:fig:c22}
+
+\noindent Go back into \code{Tools} and select the tool you just created (e.g.\
+\code{Arduino - COM4}).
+
+\bookimage[0.95]{lectures/L02/appendix/images/23_tools_menu_arduino_com4_selected.png}{Running the
+new tool from the Tools menu.}{c2:fig:c23}
+
+\subsection{Flash and verify}
+\label{c2:c:9}
+If everything worked, the Output window should end with the number of bytes written, e.g.:
+
+\begin{console}
+Writing | ################################################## | 100% 0.05s
+
+avrdude.exe: 194 bytes of flash written
+avrdude.exe: safemode: lfuse reads as 0
+avrdude.exe: safemode: hfuse reads as 0
+avrdude.exe: safemode: efuse reads as 0
+avrdude.exe: safemode: Fuses OK (E:00, H:00, L:00)
+
+avrdude.exe done. Thank you.
+\end{console}
+
+\bookimage[0.95]{lectures/L02/appendix/images/24_output_window_flash_success.png}{A successful
+flash, as the Output window reports it.}{c2:fig:c24}
+
+\noindent The LED on D9 should now light up while the button on D13 is held, and stay off otherwise.
+If the write fails instead, with something like:
+
+\begin{console}
+avrdude.exe: ser_open(): can't open device "\\.\COM4": Det går inte att hitta filen.
+\end{console}
+
+\noindent (the last part is Swedish Windows for ``The system cannot find the file specified''),
+check that the board is connected, then check the Arduino IDE for its current COM port; if it's
+changed, see below.
+
+\subsubsection{If the COM port changes}
+Reconnecting the board sometimes assigns a different COM port, which surfaces as the same
+\code{ser_open()} error above. The fix is a second External Tool entry, identical to the first
+except for the port: back in \code{Tools → External Tools}, add a new entry (e.g.\
+\code{Arduino - COM3}), reusing the same Command, and an Arguments value with \code{PCOM4} swapped
+for the new port (e.g.\ \code{PCOM3}).
+
+\bookimage[0.95]{lectures/L02/appendix/images/25_external_tools_menu_for_com3.png}{Back to Tools,
+External Tools, for a second entry.}{c2:fig:c25}
+
+\bookimage[0.95]{lectures/L02/appendix/images/26_external_tools_arduino_com3.png}{The Arduino - COM3
+entry: the same Command, with \code{-PCOM3} in its Arguments.}{c2:fig:c26}
+
+\noindent Then select the new tool from \code{Tools} and run it the same way as before.
+
+\bookimage[0.95]{lectures/L02/appendix/images/27_tools_menu_arduino_com3_selected.png}{Running the
+COM3 tool from the Tools menu.}{c2:fig:c27}

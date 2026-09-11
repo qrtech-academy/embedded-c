@@ -64,7 +64,6 @@ After completing the course, participants should be able to:
 ---
 
 ## Two Written Papers, and What They Are Not
-
 Nothing in this course is marked. Assessment is the exercise set after every lecture, and the
 Evaluation questions that close every lecture README.
 
@@ -82,6 +81,16 @@ through examines material nobody has taught you yet.
 
 ---
 
+## The Book
+
+The whole course is also available as a book: [Embedded C](./book/embedded-c.pdf).
+It is built from the sources in [`book/`](./book/README.md), which also say how to build it yourself
+(`make -C book`) and how a new edition is released. Besides the lectures, the demos and the two
+papers, the book answers every exercise that has one right answer: the calculations and the
+reflection questions.
+
+---
+
 ## Structure
 
 ```text
@@ -89,6 +98,7 @@ ci/          CI scripts (build and format checks).
 info/        Course info: instructor, course plan, and per-lecture topic breakdown.
 lectures/    Lecture READMEs, appendices, exercises, and worked hardware demos, L01-L10.
 exam/        Two written papers and their solutions. Optional, and marked by nobody here.
+book/        The course typeset as a book with LuaLaTeX; `make -C book` builds the PDF.
 ```
 
 ---
@@ -99,5 +109,18 @@ Every worked demo in this repo can also be run on your host machine under the
 EEPROM persistence and `avr-gdb` debugging. See
 [info/simulating_with_simavr.md](info/simulating_with_simavr.md). It is a way to keep moving until
 you have a board, not a replacement for one.
+
+---
+
+## License
+The source code is released under the [MIT License](./LICENSE): the demo programs and their
+drivers, the build and CI scripts, and the book's build files.
+
+The course material is licensed under [CC BY-NC-SA 4.0](./LICENSE-CONTENT): the lectures,
+exercises and exam papers, the other Markdown documents, the figures, and the book typeset from
+them. You may share and adapt it for any non-commercial purpose, with credit, as long as what you
+share carries the same license. The code examples printed in the lectures and in the book may also
+be used under the MIT License. Third-party material in the figures (screenshots of other software,
+and the board and component artwork in the circuit diagrams) remains subject to its owners' terms.
 
 ---

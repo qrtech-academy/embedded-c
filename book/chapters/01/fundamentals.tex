@@ -1,0 +1,894 @@
+% Section 1.1, from lectures/L01/appendix/a_c_fundamentals.md.
+
+\section{C Fundamentals for Experienced Programmers}
+\label{c1:sec:fundamentals}\label{c1:app:a}
+A fast-moving refresher on C syntax for programmers who already know how to program in another
+language; not a full C course, but enough that later chapters can assume you're not fighting the
+language while learning hardware concepts. If a section looks obvious, skip ahead; the pointer
+section (\secref{c1:a:7}) is the one worth actually reading.
+
+\subsection{Compiling and program shape}
+\label{c1:a:1}
+\begin{itemize}
+  \item C is compiled, not interpreted: source code $\rightarrow$ assembly $\rightarrow$ machine
+    code. No runtime interpretation overhead, which is most of why it's the default choice for
+    embedded systems.
+  \item C is procedural: everything lives in functions; \code{main()} is the entry point.
+  \item No safety net: no bounds checking, no garbage collection. The language trusts you.
+\end{itemize}
+A \code{Hello, world!} program is shown below:
+
+\begin{ccode}
+#include <stdio.h>
+
+int main(void)
+{
+    printf("Hello, world!\n");
+    return 0;
+}
+\end{ccode}
+
+\begin{itemize}
+  \item \code{#include <stdio.h>} pulls in declarations (a header), not an implementation; that's
+    resolved at link time.
+  \item \code{return 0} from \code{main()} signals success to the OS. C99+ makes it implicit if
+    omitted, but write it anyway.
+  \item A Doxygen comment above a function, written in the imperative mood and documenting its
+    contract, is conventional throughout this codebase. For example, a function that computes
+    voltage by Ohm's law can be documented as shown below:
+\end{itemize}
+
+\begin{ccode}
+/**
+ * @brief Compute voltage from resistance and current.
+ *
+ * @param[in] resistance_kohm Resistance in kOhm.
+ * @param[in] current_ma Current in mA.
+ *
+ * @return Voltage in V.
+ */
+double compute_voltage(double resistance_kohm, double current_ma);
+\end{ccode}
+
+\subsection{Data types \& naming}
+\label{c1:a:2}
+
+\begin{booktable}{@{}p{9.6em}Lp{6.4em}@{}}
+  \thead{Type} & \thead{Meaning} & \thead{Typical size} \\
+  \midrule
+  \code{void} & nothing (no return value) & -- \\
+  \code{int} & signed integer & 2--4 bytes \\
+  \code{float} & single-precision float & 4 bytes \\
+  \code{double} & double-precision float (default for float literals) & 8 bytes (4 with avr-gcc) \\
+  \code{char} & one character & 1 byte \\
+  \code{char[]} / \code{char*} & string (array of \code{char}, NUL-terminated) & -- \\
+  \code{bool} (\code{<stdbool.h>}) & \code{true} / \code{false} & 1 byte \\
+\end{booktable}
+
+\begin{itemize}
+  \item Prefer \code{const} for anything that shouldn't change after initialization, following the
+    same intent as \code{final}/\code{readonly} in other languages. It also lets the compiler catch
+    mistakes and optimize more aggressively.
+\end{itemize}
+An exception is function declarations: do not qualify arguments passed by value with \code{const},
+as it has no effect on the function interface and only reduces readability. In the corresponding
+function definition, however, pass-by-value arguments should be declared \code{const} for the
+reasons above.
+\begin{itemize}
+  \item Naming convention: \code{snake_case} for variables/functions/constants, \code{UPPER_CASE}
+    for macros and enum constants. Not camelCase/PascalCase; that's a Java/C\#/Pascal/C++
+    convention, not a C one.
+  \item \textbf{Integer division truncates}: \code{5 / 2 == 2}, not \code{2.5}. Force float division
+    by making at least one operand a \code{double}/\code{float}, or cast: \code{(double)(a) / b}.
+  \item \code{\%} is modulus, integers only; using it on a float is a compiler error.
+\end{itemize}
+
+\subsection{Structs, enums, and typedefs}
+\label{c1:a:3}
+
+\subsubsection{Structs}
+\begin{itemize}
+  \item A \code{struct} groups related fields under one name, each accessed with \code{.} (or
+    \code{->} if you're going through a pointer). No methods, no inheritance, no access control;
+    just a memory layout, laid out in declaration order (the compiler may insert padding between
+    fields for alignment).
+  \item Compare to a plain data class/record in other languages, minus the behavior.
+  \item The idiom used throughout this codebase for functions that operate on a struct: take a
+    pointer to it as the first parameter, named \code{self}. It's the closest C gets to a method's
+    implicit \code{this}, without the language actually having objects:
+\end{itemize}
+
+\begin{ccode}
+/**
+ * @brief Electrical measurement structure.
+ */
+struct measurement
+{
+    /** Voltage in V. */
+    double voltage_v;
+
+    /** Current in mA. */
+    double current_ma;
+
+    /** Resistance in kOhm. */
+    double resistance_kohm;
+};
+
+/**
+ * @brief Store a voltage/current reading and derive its resistance (Ohm's law).
+ *
+ * @param[out] self Pointer to the measurement to populate.
+ * @param[in] voltage_v Voltage in V.
+ * @param[in] current_ma Current in mA.
+ */
+static void measurement_init(struct measurement* self, const double voltage_v,
+                              const double current_ma)
+{
+    self->voltage_v       = voltage_v;
+    self->current_ma      = current_ma;
+    self->resistance_kohm = voltage_v / current_ma;
+}
+
+struct measurement m;
+measurement_init(&m, 5.0, 0.5);
+printf("%g V\n", m.voltage_v);
+\end{ccode}
+
+\begin{itemize}
+  \item Passing a \code{struct} by value copies every field, so \code{self} is (almost) always a
+    pointer:
+  \begin{itemize}
+    \item A \code{const struct measurement*} when the function only reads it.
+    \item A plain \code{struct measurement*} when it writes through it, same as any other
+      out-parameter (\secref{c1:a:7}).
+  \end{itemize}
+\end{itemize}
+
+\subsubsection{\code{typedef}}
+\begin{itemize}
+  \item \code{typedef} gives an existing type a new name, most often to avoid typing
+    \code{struct measurement} everywhere. The convention in this codebase is a \code{_t} suffix on
+    an anonymous struct:
+\end{itemize}
+
+\begin{ccode}
+/**
+ * @brief Electrical measurement structure.
+ */
+typedef struct
+{
+    /** Voltage in V. */
+    double voltage_v;
+
+    /** Current in mA. */
+    double current_ma;
+
+    /** Resistance in kOhm. */
+    double resistance_kohm;
+} measurement_t;
+
+// Create measurement instance.
+measurement_t m = { .voltage_v = 5.0, .current_ma = 0.5, .resistance_kohm = 10.0 };
+\end{ccode}
+
+\begin{itemize}
+  \item \code{measurement_t} behaves exactly like \code{struct measurement} above; the
+    \code{typedef} is purely a naming convenience, it doesn't change layout or behavior.
+\end{itemize}
+
+\subsubsection{\code{enum}}
+\begin{itemize}
+  \item An \code{enum} names a set of related integer constants, so a \code{switch} reads as intent
+    rather than magic numbers, and some compilers can warn you when a \code{switch} doesn't handle
+    every named case:
+\end{itemize}
+
+\begin{ccode}
+/**
+ * @brief Enumeration of sensor states.
+ */
+typedef enum
+{
+    SENSOR_STATE_IDLE,     ///< Sensor is idle.
+    SENSOR_STATE_SAMPLING, ///< Sensor is sampling.
+    SENSOR_STATE_ERROR     ///< Sensor is in an error state.
+} sensor_state_t;
+
+// Create variable holding the sensor state.
+sensor_state_t state = SENSOR_STATE_IDLE;
+\end{ccode}
+
+\begin{itemize}
+  \item Unless you assign values explicitly, members count up from 0 in declaration order
+    (\code{SENSOR_STATE_IDLE == 0}, \code{SENSOR_STATE_SAMPLING == 1}, \dots).
+  \item Assign explicit values when the numbers themselves matter, e.g.\ they're written to a
+    hardware register.
+  \item Prefer this over a block of \code{#define SENSOR_STATE_IDLE 0} macros: same cost at
+    runtime, but the type shows up in a debugger and the compiler can help catch an unhandled
+    \code{switch} case.
+\end{itemize}
+
+\subsection{Scope, lifetime, and storage}
+\label{c1:a:4}
+
+\begin{booktable}{@{}p{7.4em}LL@{}}
+  \thead{Storage class} & \thead{Scope} & \thead{Lifetime} \\
+  \midrule
+  \textbf{Local} & Inside a function or block. & Stack-allocated; destroyed when the block
+    exits. \\
+  \textbf{\code{static} local} & Inside a function or block. & Persists for the program's life. \\
+  \textbf{Global} & Outside any function. & Exists for the program's life; stored in RAM. \\
+\end{booktable}
+
+\noindent\textbf{Rule of thumb}:
+\begin{itemize}
+  \item Minimize scope and lifetime.
+  \item Mark file-scope functions and globals \code{static} when they shouldn't leak outside the
+    \code{.c} file; it's the closest thing C has to ``private,'' and it gives the compiler more
+    room to inline and optimize.
+\end{itemize}
+
+\subsection{Printing (\code{printf()})}
+\label{c1:a:5}
+
+\begin{booktable}{@{}p{7em}L@{}}
+  \thead{Specifier} & \thead{Type} \\
+  \midrule
+  \code{\%d} / \code{\%i} & \code{int} \\
+  \code{\%u} & unsigned int \\
+  \code{\%f} & \code{double} (a \code{float} argument is promoted to \code{double}), fixed
+    decimals; \code{\%lf} means the same \\
+  \code{\%g} & \code{double}, shortest representation \\
+  \code{\%c} & single \code{char} \\
+  \code{\%s} & string (\code{char*}) \\
+  \code{\%p} & pointer address \\
+\end{booktable}
+
+\begin{ccode}
+printf("%s is %d years old!\n", name, age);
+printf("Voltage: %.2f V\n", voltage);   // 2 decimal places
+\end{ccode}
+
+\subsection{Functions}
+\label{c1:a:6}
+
+\begin{ccode}
+return_type function_name(param_type param_name, ...)
+{
+    ...
+    return value;   // omit for void
+}
+\end{ccode}
+
+\begin{itemize}
+  \item \code{static} before the return type = internal linkage (only visible in this \code{.c}
+    file). Default to \code{static} for anything that isn't part of a module's public API.
+  \item \code{static inline} on small, frequently-called functions hints the compiler to paste the
+    body in at the call site instead of paying for a call/return. Modern compilers usually do this
+    anyway, but it's idiomatic for small helpers.
+  \item Declare functions (a prototype) before use, typically in a header, so callers don't need
+    the full definition.
+\end{itemize}
+
+\begin{ccode}
+/**
+ * @brief Compute resistance from voltage and current (Ohm's law).
+ *
+ * @param[in] voltage Voltage in V.
+ * @param[in] current Current in mA.
+ *
+ * @return Resistance in kOhm, or 0 if the current is 0.
+ */
+static inline double get_resistance(const double voltage, const double current)
+{
+    return 0.0 != current ? voltage / current : 0.0;
+}
+\end{ccode}
+
+\begin{itemize}
+  \item Convention for ordering a \code{.c} file: forward-declare its \code{static} helpers once,
+    right after the \code{#include}s, then define the public functions (in the same order the
+    header declares them), and put the \code{static} helpers' own definitions at the bottom of the
+    file. A reader hits the public API first and only descends into private implementation detail
+    if they keep scrolling:
+\end{itemize}
+
+\begin{ccode}
+#include "sensor.h"
+
+/* Static functions: */
+static double filter_reading(double raw_v);
+
+double sensor_read(void)
+{
+    const double raw_v = adc_read();
+    return filter_reading(raw_v);
+}
+
+/* raw_v filtering is an implementation detail, not part of sensor.h. */
+static double filter_reading(const double raw_v)
+{
+    ...
+}
+\end{ccode}
+
+\begin{itemize}
+  \item When a header can be included from more than one place (or pulled in indirectly through
+    another header), wrap its contents in a header guard so the compiler never sees the same
+    declarations twice:
+\end{itemize}
+
+\begin{ccode}
+#ifndef SENSOR_H_
+#define SENSOR_H_
+
+double sensor_read(void);
+
+#endif /* SENSOR_H_ */
+\end{ccode}
+
+\begin{itemize}
+  \item Convention: the guard macro is the file name in \code{UPPER_CASE}, with \code{.} replaced
+    by \code{_} and a trailing \code{_} (\file{sensor.h} $\rightarrow$ \code{SENSOR_H_}), chosen so
+    it's unlikely to collide with any other macro in the program. \code{#pragma once} does the same
+    job in a single line and most modern compilers support it, but it isn't part of the C standard;
+    traditional guards are the portable choice and what you'll see throughout this codebase when
+    using C. In C++, \code{#pragma once} is also widely used.
+\end{itemize}
+
+\subsection{Pointers (the one thing that's actually different)}
+\label{c1:a:7}
+
+\begin{aside}
+\textbf{Everything is pass-by-value in C.} Every function argument is copied. Passing a pointer
+still passes a copy of the pointer; it just happens to point to the same object as the caller's
+pointer. This lets a function modify the caller's object through the pointer, but assigning a new
+value to the pointer itself does not affect the caller.
+\end{aside}
+
+\noindent If you're coming from a garbage-collected language, this is the section to actually read:
+\begin{itemize}
+  \item A pointer holds an \emph{address}, e.g.\ \code{int* ptr = &x;} makes \code{ptr} point at
+    \code{x}:
+  \begin{itemize}
+    \item \code{&x} means ``address of x''.
+    \item \code{*ptr} means ``the value that \code{ptr} points to'' (dereference).
+  \end{itemize}
+  \item Pointers let a function modify the caller's object because, although the pointer itself is
+    passed by value, it still points to that object.
+\end{itemize}
+
+\begin{ccode}
+/**
+ * @brief Assign 3 to the variable pointed to by x.
+ *
+ * @param[out] x Pointer to the variable to assign.
+ */
+static void assign(int* x)
+{
+    *x = 3; // Writes through the pointer into the caller's variable.
+}
+
+int main(void)
+{
+    int a = 0;
+    assign(&a);
+    printf("a = %d\n", a); // a = 3.
+}
+\end{ccode}
+
+\noindent This is the standard C idiom for ``multiple out-parameters'' or ``modify in place,''
+using no references, no boxing, just an address. You'll see this pattern constantly once we start
+writing to hardware registers:
+\begin{itemize}
+  \item A pointer to a pointer (\code{int**}) lets a function replace \emph{what the caller's
+    pointer points to}, not just the value at that address; the same out-parameter idiom, one level
+    deeper. You'll see this whenever a function needs to null out or reassign a pointer it was only
+    given a copy of:
+\end{itemize}
+
+\begin{ccode}
+#include <stddef.h>
+
+static void set_to_null(int** ptr)
+{
+    *ptr = NULL; // Changes the caller's pointer itself, not just *ptr's target.
+}
+
+int main(void)
+{
+    int x = 5;
+    int* p = &x;
+    set_to_null(&p);
+    // p is now NULL; x is untouched.
+}
+\end{ccode}
+
+\begin{itemize}
+  \item Arrays and strings decay to a pointer to their first element automatically when passed to
+    a function, no \code{&} needed:
+\end{itemize}
+
+\begin{ccode}
+static void print_text(const char* s) { printf("%s", s); }
+const char text[] = "no & needed here";
+print_text(text);
+\end{ccode}
+
+\begin{itemize}
+  \item \code{const char*} means ``pointer to data I won't modify through this pointer''; use it on
+    any string/array parameter you're only reading, same spirit as marking a parameter
+    \code{readonly}.
+  \item A string is a \code{char} array ending in a \code{'\0'} (NUL) byte; there's no length
+    field. \code{sizeof} gives you the buffer's declared capacity, not the content length, and only
+    works on the actual array, not a pointer to it.
+\end{itemize}
+
+\subsection{Function pointers}
+\label{c1:a:8}
+A function pointer holds the \emph{address of a function} instead of a variable, callable through
+the pointer exactly like calling the function by name:
+
+\begin{ccode}
+#include <stdio.h>
+
+static void greet1(void) { printf("Hello!\n"); }
+static void greet2(void) { printf("World!\n"); }
+
+int main(void)
+{
+    void (*fn)(void) = greet1; // fn now holds greet1's address.
+    fn();                      // Calls greet1(), exactly like greet1() would.
+
+    fn = greet2;               // fn now holds greet2's address.
+    fn();                      // Calls greet2(), exactly like greet2() would.
+}
+\end{ccode}
+
+\begin{itemize}
+  \item The declaration reads inside-out: \code{void (*fn)(void)} is ``\code{fn} is a pointer to a
+    function taking no arguments and returning \code{void}.'' The parentheses around \code{*fn} are
+    required, \code{void *fn(void)} would instead declare a function returning \code{void*}.
+  \item A function's name, used without calling it (no \code{()}), decays to its address the same
+    way an array name decays to a pointer to its first element (\secref{c1:a:7}):
+    \code{fn = greet1;} needs no \code{&}.
+  \item \code{typedef} cleans up the syntax the same way it does for structs (\secref{c1:a:3}), and
+    gives the pointer type a name that documents what it's for:
+\end{itemize}
+
+\begin{ccode}
+typedef void (*callback_t)(void);
+
+static void on_timeout(void) { printf("Timed out!\n"); }
+
+static void run(callback_t cb) // cb holds a function's address, not a value.
+{
+    cb(); // Calls whichever function was passed in.
+}
+
+int main(void)
+{
+    run(on_timeout); // Prints "Timed out!".
+}
+\end{ccode}
+
+\begin{itemize}
+  \item \code{run()} never mentions \code{on_timeout} by name, it just calls whatever
+    \code{callback_t} it was given. That's the whole idea: the caller decides which function runs,
+    the callee just knows the function's signature.
+  \item This comes back twice, later in the book: Chapter~9's timer driver exercise
+    (Exercise~\ref{c9:ex:6}) stores one of these in a struct so a timer can run arbitrary code when
+    it expires, and Chapter~\ref{c10:ch} builds an entire polymorphism system, structs whose
+    behavior is decided at runtime rather than compile time, out of nothing but function pointers.
+\end{itemize}
+
+\subsection{Reading input}
+\label{c1:a:9}
+You won't have a keyboard on a microcontroller, but the buffer-safety idiom here reappears when
+reading serial/UART data later, so it's worth knowing.
+\begin{itemize}
+  \item \code{scanf("\%s", buf)} is easy but unsafe: no bounds checking, and it stops at the first
+    whitespace.
+  \item \code{fgets(buf, sizeof(buf), stdin)} is the safe alternative; it takes an explicit buffer
+    size and won't overflow, but it keeps the trailing \code{'\n'}, which callers usually strip:
+\end{itemize}
+
+\begin{ccode}
+/**
+ * @brief Read a line of input into a buffer, stripping the trailing newline.
+ *
+ * @param[out] buf Buffer to store the line in.
+ * @param[in] buflen Capacity of the buffer, in bytes.
+ */
+static void readline(char* buf, const size_t buflen)
+{
+    // Read data from the terminal, store in the buffer.
+    fgets(buf, (int)(buflen), stdin);
+
+    // Replace '\n' characters with '\0'.
+    for (size_t i = 0U; '\0' != buf[i]; i++)
+    {
+        if ('\n' == buf[i]) { buf[i] = '\0'; }
+    }
+}
+\end{ccode}
+
+\begin{itemize}
+  \item To get numbers out of text: read a line as a string, then convert with \code{atoi()} for
+    \code{int} or \code{atof()} for \code{double} (both in \code{<stdlib.h>}). ``Read raw bytes,
+    then parse'' is the same pattern you'll use for serial input later.
+\end{itemize}
+
+\subsection{Control flow}
+\label{c1:a:10}
+C's control-flow syntax is close to every C-family language you already know, with a few local
+quirks:
+\begin{itemize}
+  \item Conditions must be parenthesized: \code{if (x < 10)}.
+  \item Braces are technically optional for a single statement, but this codebase always uses them,
+    even for one-liners: it avoids the classic bug where a second statement is added later without
+    adding braces to match, silently falling outside the \code{if}:
+\end{itemize}
+
+\begin{ccode}
+if (10 > x) { x = 25; }
+else { printf("Out of range!\n"); }
+\end{ccode}
+
+\begin{itemize}
+  \item \code{while}, \code{for}, and \code{switch} behave as expected. \code{for (;;)} or
+    \code{while (true)} is the idiomatic infinite loop.
+  \item \code{switch} \textbf{falls through} unless you \code{break}, a common bug source if you're
+    coming from a language that doesn't do this. Give each \code{case} its own
+    \code{return}/\code{break}.
+  \item \code{&&}, \code{||}, \code{!} for logic; \code{==} to compare, \code{=} to assign; mixing
+    them up compiles and is a classic bug (most compilers will warn on it).
+  \item \textbf{Yoda notation}: writing the constant on the left of a comparison, \code{if (0 == x)}
+    rather than \code{if (x == 0)}, is a defensive habit against exactly that \code{==}/\code{=}
+    typo. Drop the second \code{=} with the constant on the left and \code{if (0 = x)} doesn't
+    compile at all, you can't assign to a literal, so the compiler catches the mistake immediately
+    instead of silently accepting an assignment that evaluates to \code{x}'s new value and is
+    truthy for anything but \code{0}. This codebase writes comparisons this way throughout;
+    \code{if (10 > x)} a few lines up is the same habit applied to \code{>}, even though
+    inequalities don't carry the same typo risk, there's no way to accidentally assign with
+    \code{>}.
+\end{itemize}
+
+\subsection{Dynamic memory allocation (\code{malloc()}/\code{realloc()}/\code{free()})}
+\label{c1:a:11}
+You almost certainly won't reach for this on a microcontroller: no OS to reclaim a leak, and a
+fragmented heap is a liability you can't always afford. It's here because
+\code{malloc()}/\code{realloc()}/\code{free()} are core C knowledge, and the double-pointer idiom
+below reappears in any hosted C code (test harnesses, host-side tooling, anything running under
+Linux rather than bare-metal).
+\begin{itemize}
+  \item \code{malloc(size)} (from \code{<stdlib.h>}) asks the heap for \code{size} bytes and returns
+    a \code{void*} (a generic pointer) to it, or a null pointer if the request can't be satisfied.
+    Always check the return value, and cast it to the pointer type you actually want; not required
+    by C, but required by C++, and it makes the intent explicit:
+\end{itemize}
+
+\begin{ccode}
+#include <stddef.h>
+#include <stdlib.h>
+
+int* data = (int*)(malloc(sizeof(int) * count));
+if (NULL == data) { return 1; }
+\end{ccode}
+
+\begin{itemize}
+  \item \code{realloc(ptr, new_size)} resizes an existing allocation, possibly moving it to a new
+    address. On success it frees the old block for you and returns the new address; on failure it
+    returns null and leaves the original block untouched. Capture the result in a temporary first,
+    so a failed \code{realloc()} doesn't overwrite (and thereby leak) your only pointer to the
+    still-valid original block:
+\end{itemize}
+
+\begin{ccode}
+int* copy = (int*)(realloc(data, sizeof(int) * new_count));
+if (NULL == copy) { return 1; } // Data is untouched and still valid on failure.
+data = copy;
+\end{ccode}
+
+\begin{itemize}
+  \item \code{free(ptr)} releases the block. Always set the pointer to \code{0}/\code{NULL}
+    immediately after; a pointer that still holds a freed address is a \emph{dangling pointer};
+    using it again is undefined behavior instead of a clean, obvious crash:
+\end{itemize}
+
+\begin{ccode}
+free(data);
+data = NULL;
+\end{ccode}
+
+\begin{itemize}
+  \item For a function to null out the \emph{caller's} pointer, not just its own local copy of it,
+    it needs the address of that pointer: the pointer-to-pointer idiom from \secref{c1:a:7}:
+\end{itemize}
+
+\begin{ccode}
+/**
+ * @brief Free a dynamically allocated array and null out the caller's pointer.
+ *
+ * @param[in,out] data Address of the pointer to the array to free.
+ */
+static void array_delete(int** data)
+{
+    if ((NULL == data) || (NULL == *data)) { return; }
+    free(*data);
+    *data = NULL;
+}
+\end{ccode}
+
+\begin{itemize}
+  \item Putting it together: \code{struct}, \code{self}, and dynamic allocation combine into the
+    standard C shape for a growable array:
+\end{itemize}
+
+\begin{ccode}
+#include <stddef.h>
+#include <stdlib.h>
+
+/**
+ * @brief Vector structure holding floating-point numbers.
+ */
+typedef struct
+{
+    /** Data field of floating-point numbers. */
+    double* data;
+
+    /** Number of elements in the data field. */
+    size_t size;
+} vector_t;
+
+/**
+ * @brief Free a vector's backing storage and reset it to empty.
+ *
+ * @param[in,out] self Pointer to the vector to clear.
+ */
+static void vector_clear(vector_t* self)
+{
+    free(self->data);
+    self->data = NULL;
+    self->size = 0U;
+}
+
+/**
+ * @brief Grow or shrink a vector's backing storage.
+ *
+ * @param[in,out] self Pointer to the vector to resize.
+ * @param[in] size New number of elements.
+ *
+ * @return 0 on success, 1 if the allocation failed (self is left untouched).
+ */
+static int vector_resize(vector_t* self, const size_t size)
+{
+    if (NULL == self) { return 1; }
+
+    if (0U == size)
+    {
+        vector_clear(self);
+        return 0;
+    }
+
+    double* copy = (double*)(realloc(self->data, sizeof(double) * size));
+    if (NULL == copy) { return 1; }
+    self->data = copy;
+    self->size = size;
+    return 0;
+}
+\end{ccode}
+
+\noindent\code{vector_resize()}'s \code{NULL == self} check is worth keeping, unlike a similar check
+you'll see argued away later in this book (the \code{delay_ms()} of \secref{c3:a:4}, where the
+pointer is only ever passed one hardcoded address from within the same file). The difference is
+what kind of function this is: \code{delay_ms()} is a private, \code{static} helper with exactly
+one call site the compiler can see in full; \code{vector_resize()} is written as the kind of
+function a reusable module would export, called from code you don't control and can't audit by
+just reading the same file. Once ``well-behaved caller'' stops being something you can verify by
+inspection, checking a pointer parameter before dereferencing it stops being decorative and starts
+being the thing standing between a bad call and a crash.
+
+\subsection{Macros (\code{\#define})}
+\label{c1:a:12}
+You've already seen \code{#define} throughout this refresher: header guards (\secref{c1:a:6}),
+\code{SENSOR_STATE_IDLE}-style constants (\secref{c1:a:3}), and every \code{LED1}/\code{F_CPU}-style
+pin and clock constant this book leans on starting next chapter. It's worth understanding what it
+actually does before writing your own.
+\begin{itemize}
+  \item \code{#define} runs in the \textbf{preprocessor}, a separate text-substitution pass that
+    happens before the compiler ever sees your code. \code{#define TIMEOUT_MS 100} doesn't create a
+    typed variable; it tells the preprocessor to replace every later occurrence of
+    \code{TIMEOUT_MS} with the literal text \code{100}, verbatim, before compilation starts. The
+    compiler never sees the name \code{TIMEOUT_MS} at all.
+  \item Because it's pure text substitution, a macro has no type, no scope, and isn't visible to a
+    debugger by name; it's gone by the time there's a program to debug. It also isn't namespaced to
+    a file, a struct, or a function the way a variable is: once defined, \code{TIMEOUT_MS} means
+    the same thing everywhere until a matching \code{#undef}, even in files that \code{#include}
+    this one.
+\end{itemize}
+
+\subsubsection{Object-like vs.\ function-like macros}
+\begin{itemize}
+  \item An \textbf{object-like macro} stands in for a value, \code{#define F_CPU 16000000UL} or
+    \code{#define LED1 1U}, the pattern this book uses constantly for pin numbers and clock
+    constants.
+  \item A \textbf{function-like macro} takes parameters, syntactically like a function call, but is
+    still pure text substitution: no type checking on the arguments, no single-evaluation
+    guarantee:
+\begin{ccode}
+#define SQUARE(x) (x * x)
+\end{ccode}
+\end{itemize}
+
+\subsubsection{Always parenthesize: the body, and every parameter}
+This is the single most important rule for writing a macro, and the reason a definition like
+\code{#define TICKS_NEEDED (TIMEOUT_MS / CLOCK_TIME_MS)} is written the way it is: the whole
+replacement is wrapped in parentheses. Skip that, and the macro's meaning changes depending on what
+surrounds it at the call site, because substitution happens \emph{before} the usual rules of
+precedence get a chance to group anything:
+
+\begin{ccode}
+#define TICKS_NEEDED TIMEOUT_MS / CLOCK_TIME_MS // No outer parentheses: fragile.
+
+const uint16_t double_ticks = 2U * TICKS_NEEDED; // Expands to: 2U * TIMEOUT_MS / CLOCK_TIME_MS.
+// * and / share precedence and group left-to-right: (2U * TIMEOUT_MS) / CLOCK_TIME_MS. Integer
+// division truncates, so that equals 2U * (TIMEOUT_MS / CLOCK_TIME_MS) only if it divides evenly.
+\end{ccode}
+
+\begin{ccode}
+#define TICKS_NEEDED (TIMEOUT_MS / CLOCK_TIME_MS) // Parenthesized: safe regardless of context.
+
+const uint16_t double_ticks = 2 * TICKS_NEEDED;
+// Expands to: 2 * (TIMEOUT_MS / CLOCK_TIME_MS), unambiguous no matter what precedence surrounds
+// the macro at its call site.
+\end{ccode}
+
+\noindent The \code{/}-only example above only survives without the parentheses when
+\code{TIMEOUT_MS} happens to be a multiple of \code{CLOCK_TIME_MS}, and that's luck, not safety;
+swap in a macro built from \code{+} or \code{-} and it breaks immediately:
+
+\begin{ccode}
+#define TIMEOUT_PLUS_MARGIN TIMEOUT_MS + 10U   // No parentheses: broken.
+
+const uint16_t scaled = 2U * TIMEOUT_PLUS_MARGIN;
+// Expands to: 2U * TIMEOUT_MS + 10U, not 2U * (TIMEOUT_MS + 10U). Silently wrong, no compiler
+// warning.
+\end{ccode}
+
+\noindent The same rule applies to every parameter of a function-like macro, not just the overall
+body; each individual use of a parameter needs its own parentheses too:
+
+\begin{ccode}
+#define SQUARE(x) (x * x)     // Unsafe: parameter isn't parenthesized.
+#define SQUARE(x) ((x) * (x)) // Safe: parameter is parenthesized everywhere it's used.
+
+SQUARE(a + b)
+// Unsafe version expands to: (a + b * a + b), wrong.
+// Safe version expands to:   ((a + b) * (a + b)), correct.
+\end{ccode}
+
+\subsubsection{Macro parameters can be evaluated more than once}
+A function-like macro's parameter isn't evaluated once and reused the way a real function parameter
+is; the text you pass in gets substituted at every point the parameter name appears in the macro's
+body. Anything with a side effect duplicates that side effect:
+
+\begin{ccode}
+#define SQUARE(x) ((x) * (x))
+
+uint8_t i = 5U;
+const uint8_t result = SQUARE(i++);   // Expands to ((i++) * (i++)): i is modified twice with
+                                       // nothing to order the two, which is undefined behavior.
+                                       // A real function would increment i exactly once.
+\end{ccode}
+
+\noindent Avoid passing an expression with side effects (\code{++}, \code{--}, assignment, a
+function call with side effects) into a function-like macro.
+
+\subsubsection{Multi-statement macros: wrap in \code{do \{ ... \} while (0)}}
+A macro that expands to more than one statement breaks if it's ever used as the body of an
+\code{if} without braces, because only the first statement ends up inside the \code{if}:
+
+\begin{ccode}
+#define LED_RESET LED_ON; LED_OFF;   // Two statements, no wrapper.
+
+if (error) LED_RESET;   // Expands to: if (error) LED_ON; LED_OFF;
+                        // LED_OFF now runs unconditionally, every time, regardless of `error`.
+\end{ccode}
+
+\noindent Wrapping the body in \code{do { ... } while (0)} turns it back into a single statement
+syntactically, so it behaves correctly wherever a single statement is expected, including inside
+an \code{if} with no braces:
+
+\begin{ccode}
+#define LED_RESET do { LED_ON; LED_OFF; } while (0)
+
+if (error) LED_RESET; // Expands to a single do/while statement; behaves as one block.
+\end{ccode}
+
+\noindent This codebase always braces its \code{if}s (\secref{c1:a:10}), which sidesteps the
+specific failure shown above, but the \code{do { ... } while (0)} idiom is still worth knowing:
+you'll see it in other people's code, and it's the standard defense once you can't guarantee every
+call site remembers to brace its \code{if}.
+
+\subsubsection{Prefer \code{const}/\code{enum} over \code{\#define} where you can}
+A macro has no type and isn't scoped, so where a real alternative exists, it's usually the better
+choice:
+\begin{itemize}
+  \item A \code{const} variable is typed, scoped like any other variable, and visible to a debugger
+    by name.
+  \item An \code{enum} (\secref{c1:a:3}) groups related named integer constants the same way, with
+    the same debugger visibility, and lets some compilers warn on an unhandled \code{switch} case.
+\end{itemize}
+Embedded C keeps reaching for \code{#define} anyway, for one specific reason: a \code{const}
+variable in C is not a \emph{compile-time constant expression} the way it is in C++. Even though
+its value can't change at runtime, the compiler doesn't treat it as a literal for contexts that
+require one, such as a \code{case} label, the size of a file-scope array, or a \code{#if}
+preprocessor check. A \code{#define} is a true compile-time constant and works in all three. An
+\code{enum} constant works in the first two, but not in \code{#if}: the preprocessor runs before
+the compiler and knows nothing about enums. It also pays off in generated code for something like
+\code{PORTB |= (1U << LED1)}: with \code{LED1} a compile-time constant, the compiler can usually
+fold the whole expression into a single bit-set instruction; with \code{LED1} a
+\code{const uint8_t} variable, nothing stops it from compiling, but the shift amount is only known
+at runtime, so the compiler may emit an actual runtime shift instead of folding it away. That's the
+real reason this book's pin numbers and bit positions are macros instead of \code{const uint8_t}s,
+not just convention.
+
+\subsection{Bringing it together}
+\label{c1:a:13}
+The pattern you'll see throughout this book, and one worth internalizing before we start writing to
+hardware registers next chapter, is small \code{static} functions, \code{const} everywhere
+possible, explicit types, no hidden allocations, and a Doxygen comment above every public function
+that isn't trivially self-explanatory:
+
+\begin{ccode}
+#include <stdio.h>
+
+
+/**
+ * @brief Compute resistance from voltage and current (Ohm's law).
+ *
+ * @param[in] voltage Voltage in V.
+ * @param[in] current Current in mA.
+ *
+ * @return Resistance in kOhm.
+ */
+static inline double get_resistance(const double voltage, const double current)
+{
+    return voltage / current;
+}
+
+/**
+ * @brief Print voltage, current, and resistance to the terminal.
+ *
+ * @param[in] voltage Voltage in V.
+ * @param[in] current Current in mA.
+ * @param[in] resistance Resistance in kOhm.
+ */
+static inline void print_quantities(const double voltage, const double current,
+                                    const double resistance)
+{
+    printf("Voltage: %g V\n", voltage);
+    printf("Current: %g mA\n", current);
+    printf("Resistance: %g kOhm\n", resistance);
+}
+
+/**
+ * @brief Application entry point.
+ *
+ * @return 0 on successful termination of the program.
+ */
+int main(void)
+{
+    const double voltage = 5.0;
+    const double current = 0.5;
+    const double resistance = get_resistance(voltage, current);
+    print_quantities(voltage, current, resistance);
+    return 0;
+}
+\end{ccode}
+
+\noindent That style carries directly into embedded C, where you don't have a heap to hide behind
+anyway.
+
+Practice exercises for this section are in \secref{c1:sec:exercises}.

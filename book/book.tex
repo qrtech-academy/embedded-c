@@ -1,0 +1,42 @@
+% Embedded C - the book.
+%
+% Built with LuaLaTeX; see the Makefile. The design is in cbook.sty, the front matter in front/,
+% each chapter in chapters/NN/, one file per section, mirroring the appendices of the lecture it is
+% typeset from, and the back matter in back/: the simulator guide from info/, the answers to the
+% exercises that have one right answer, and the two written papers from exam/. The Code exercises
+% have no printed solution; the board is how a program is checked.
+%
+% Every chapter and appendix is an \include, so `make partial ONLY=...` can build any of them on
+% their own.
+\documentclass[10pt, twoside, openright]{book}
+\usepackage{cbook}
+
+\begin{document}
+
+\frontmatter
+\input{front/title}
+\tableofcontents
+\input{front/preface}
+
+\mainmatter
+\include{chapters/01/chapter}
+\include{chapters/02/chapter}
+\include{chapters/03/chapter}
+\include{chapters/04/chapter}
+\include{chapters/05/chapter}
+\include{chapters/06/chapter}
+\include{chapters/07/chapter}
+\include{chapters/08/chapter}
+\include{chapters/09/chapter}
+\include{chapters/10/chapter}
+
+\appendix
+\include{back/sim/simavr}
+\include{back/answers/answers}
+\include{back/exam/about}
+\include{back/exam/paper_a}
+\include{back/exam/paper_b}
+\include{back/exam/answers_a}
+\include{back/exam/answers_b}
+
+\end{document}

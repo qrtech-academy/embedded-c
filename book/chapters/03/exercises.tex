@@ -1,0 +1,115 @@
+% Section 3.3, from lectures/L03/appendix/b_exercises.md.
+
+\section{Exercises}
+\label{c3:sec:exercises}\label{c3:app:b}
+
+\begin{aside}
+\textbf{How to work these.} The Reflection and Calculation exercises are answered on paper, from
+the chapter. The Code exercises are programs for the board: build and flash them the way
+\secref{c2:app:c} (Microchip Studio) or \secref{c2:app:d} (Linux) describes, or run them in the
+simulator of Appendix~\ref{sim:ch} if you have no board yet.
+
+\textbf{How to check your work.} The Reflection and Calculation exercises are answered in
+Appendix~\ref{app:answers}. The Code exercises have no printed solution: the board tells you
+whether a program does what the exercise describes. Try each exercise before you read its answer.
+\end{aside}
+
+% ------------------------------------------------------------------------------------------
+\exerciseset{Concepts}
+\label{c3:set:1}
+
+\reflexercise{Polling versus interrupts}
+\label{c3:ex:1}
+In your own words (2--3 sentences), explain why polling \code{BTN1_PRESSED} in a \code{while} loop
+scales poorly once you have several inputs to watch, and how interrupts solve that.
+
+\reflexercise{\code{EICRA} and \code{EIMSK}}
+\label{c3:ex:2}
+What does \code{EICRA} configure that \code{EIMSK} doesn't? Could you enable INT0 without touching
+\code{EICRA} at all; what would happen if you did?
+
+% ------------------------------------------------------------------------------------------
+\exerciseset{INT0/INT1}
+\label{c3:set:2}
+
+\codeexercise{Moving the button to INT1}
+\label{c3:ex:3}
+Rewire the INT0 example of \secref{c3:a:3} (button on D2) to use \textbf{INT1} on D3 instead.
+Write out the three configuration lines that change.
+
+\reflexercise{The wrong edge}
+\label{c3:ex:4}
+A colleague configures \code{EICRA} for a falling edge instead of rising, but leaves the rest of
+the INT0 example unchanged, and complains the LED toggles when the button is \emph{released}, not
+pressed. Explain what happened.
+
+% ------------------------------------------------------------------------------------------
+\exerciseset{Pin Change Interrupts}
+\label{c3:set:3}
+
+\calcexercise{An interrupt on D4}
+\label{c3:ex:5}
+A project needs an interrupt on D4. Work out, from the formula table in \secref{c3:a:5}, which
+\code{PCINT} number that is, which port group it belongs to, and which three registers/bits need to
+be touched to enable it.
+
+\reflexercise{Two buttons, one vector}
+\label{c3:ex:6}
+Two buttons are wired to D11 and D12 (both \code{PORTB}). Both are configured via PCI and share
+\code{PCINT0_vect}. Sketch how a single ISR could tell which button changed, using a ``previous
+state'' byte compared against the current \code{PINB} read.
+
+% ------------------------------------------------------------------------------------------
+\exerciseset{Program}
+\label{c3:set:4}
+
+\codeexercise{A PCI blink toggle}
+\label{c3:ex:7}
+Wire up an LED on D6 and a button on D4. Using a Pin Change Interrupt (not INT0/INT1) on the
+button, write a complete program, from scratch, that:
+\begin{itemize}
+  \item Starts with the LED off and blinking disabled.
+  \item Each button press toggles between two states: blinking (LED on/off every 200\,ms) and
+    disabled (LED held off).
+  \item The ISR only flags that the button was pressed, filtering the release edge the same way as
+    the PCI example of \secref{c3:a:5}; the actual state toggle and the blink timing both happen in
+    \code{main()}.
+\end{itemize}
+You'll need a blocking delay for the blink timing itself (\code{_delay_ms()}, as in
+Chapter~\ref{c2:ch}); non-blocking delays are the subject of Chapter~\ref{c5:ch}, on timers, not
+of this one. This chapter's own \secref{c3:a:4} (blink an LED via INT1) is the closest worked
+example to lean on.
+
+\codeexercise{An interrupt-driven state machine}
+\label{c3:ex:8}
+Build a 5-state state machine, driven entirely by interrupts, using every kind covered in this
+chapter at once.
+
+Wire up three LEDs, \code{LED1} on D8, \code{LED2} on D9, and \code{LED3} on D10, plus five
+buttons. Declare the five states as an \code{enum} (\code{STATE_OFF}, \code{STATE_SLOW},
+\code{STATE_MEDIUM}, \code{STATE_FAST}, \code{STATE_ON}), and wire each button as follows,
+advancing/rewinding with wraparound at both ends of the range:
+\begin{itemize}
+  \item \code{BTN1} on D2 (\textbf{INT0}, falling edge) is a reset: jump straight to
+    \code{STATE_OFF}, ignoring the normal advance/rewind stepping.
+  \item \code{BTN2} on D3 (\textbf{INT1}, rising edge) rewinds the state by two steps.
+  \item \code{BTN3} on D11 (\textbf{PCI}) rewinds the state by one step.
+  \item \code{BTN4} on D12 (\textbf{PCI}) advances the state by one step.
+  \item \code{BTN5} on D13 (\textbf{PCI}) advances the state by two steps.
+\end{itemize}
+The three LEDs' behavior depends on the current state:
+\begin{itemize}
+  \item \code{STATE_OFF}: all three LEDs held off.
+  \item \code{STATE_SLOW} / \code{STATE_MEDIUM} / \code{STATE_FAST}: the three LEDs chase in a loop
+    (\code{LED1} $\rightarrow$ \code{LED2} $\rightarrow$ \code{LED3} $\rightarrow$ \code{LED1}
+    \ldots), lighting exactly one at a time, holding each for 500\,ms / 250\,ms / 50\,ms
+    respectively.
+  \item \code{STATE_ON}: all three LEDs held on.
+\end{itemize}
+As with every other example in this chapter, keep each ISR minimal: flag which button fired (and,
+for the three PCI buttons sharing one vector, work out \emph{which} pin changed, as in
+Exercise~\ref{c3:ex:6}), and let \code{main()} do the actual work of updating \code{state} and
+driving the LEDs.
+
+\bookimage{lectures/L03/appendix/images/circuit_state_machine_exercise.jpg}{Three LEDs on D8--D10
+and five buttons, on D2, D3 and D11--D13.}{c3:fig:statemachine}

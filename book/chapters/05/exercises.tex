@@ -1,0 +1,86 @@
+% Section 5.3, from lectures/L05/appendix/b_exercises.md.
+
+\section{Exercises}
+\label{c5:sec:exercises}\label{c5:app:b}
+
+\begin{aside}
+\textbf{How to work these.} The Reflection and Calculation exercises are answered on paper, from
+the chapter. The Code exercises are programs for the board: build and flash them the way
+\secref{c2:app:c} (Microchip Studio) or \secref{c2:app:d} (Linux) describes, or run them in the
+simulator of Appendix~\ref{sim:ch} if you have no board yet.
+
+\textbf{How to check your work.} The Reflection and Calculation exercises, and the questions some
+Code exercises ask about their design, are answered in Appendix~\ref{app:answers}. The Code
+exercises have no printed solution: the board tells you whether a program does what the exercise
+describes. Try each exercise before you read its answer.
+\end{aside}
+
+% ------------------------------------------------------------------------------------------
+\exerciseset{Concepts}
+\label{c5:set:1}
+
+\calcexercise{Tick at \textdiv256}
+\label{c5:ex:1}
+At 16\,MHz with a \textdiv256 prescaler, what's the resulting tick frequency and tick period? Show
+your work.
+
+\calcexercise{Overflows for 250\,ms}
+\label{c5:ex:2}
+Using your answer to Exercise~\ref{c5:ex:1}, how many overflow interrupts (8-bit timer) would be
+needed to time a 250\,ms delay?
+
+% ------------------------------------------------------------------------------------------
+\exerciseset{Normal vs.\ CTC}
+\label{c5:set:2}
+
+\reflexercise{When to reach for CTC}
+\label{c5:ex:3}
+In your own words, explain when you'd reach for CTC mode instead of Normal mode with software
+overflow-counting. Is there a period that's awkward to hit precisely in Normal mode but trivial in
+CTC?
+
+% ------------------------------------------------------------------------------------------
+\exerciseset{Program}
+\label{c5:set:3}
+
+\codeexercise{Blinking at 2\,Hz}
+\label{c5:ex:4}
+Adapt the Timer 0 blink example of \secref{c5:a:4} to blink at 2\,Hz (250\,ms on, 250\,ms off)
+instead of 1\,Hz. What value changes, and what does the new \code{OVF_MAX} work out to?
+
+\reflexercise{When \code{volatile} matters}
+\label{c5:ex:5}
+The chapter's Timer 0 example declares \code{ovf_count} as \code{volatile}, and \secref{c5:a:4}
+says that removing the qualifier there would change nothing. Explain why. Then
+suppose \code{ovf_count} moved to file scope so that \code{main()} could wait for it, in a loop
+such as \code{while (10U > ovf_count) {}}. What specific failure could removing \code{volatile}
+now introduce, and why might it show up in one build and not in another?
+
+\codeexercise{A 2-second period in CTC}
+\label{c5:ex:6}
+Configure Timer 1 in CTC mode for a period of exactly 2 seconds at 16\,MHz with a \textdiv1024
+prescaler. What value goes in \code{OCR1A}? (Timer 1 is 16-bit, so check whether your answer
+fits.)
+
+\codeexercise{Three timers, one blink}
+\label{c5:ex:7}
+Capstone. Two LEDs on D9/D10 blink at a speed selected by whichever of three buttons (D11--D13)
+was most recently pressed, each mapped to a different timer:
+\begin{itemize}
+  \item D11 selects Timer 0 (1000\,ms per toggle), D12 selects Timer 1 (500\,ms per toggle), D13
+    selects Timer 2 (100\,ms per toggle).
+  \item Pressing a button toggles \emph{that} timer's blinking on or off. If it was off, turn it on
+    and turn the other two off (only one timer drives the LEDs at a time). If it was already the
+    active timer, turn it off entirely and the LEDs go dark.
+  \item Configure all three timers to tick at the same rate (\textdiv1024 prescaler,
+    $\sim$0.064\,ms per tick) so the overflow-counting logic in \secref{c5:a:4} works identically
+    for each. Timer 1 needs CTC mode with \code{OCR1A} set so its compare-match period matches
+    Timer 0/2's overflow period, even though its 16-bit range could hit the target directly, so all
+    three interrupt handlers end up the same shape.
+  \item Define a small struct to hold \code{required_interrupts} and \code{executed_interrupts} for
+    one timer (see \secref{c5:a:2} and \secref{c5:a:4} for the counting pattern), and use three
+    instances, one per timer, instead of three sets of loose globals.
+\end{itemize}
+For a harder version: instead of tracking ``currently active timer'' with three separate
+\code{bool}s, use an enum (\code{TIMER_NONE}, \code{TIMER_0}, \code{TIMER_1}, \code{TIMER_2}) and a
+single variable.

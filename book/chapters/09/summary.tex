@@ -1,0 +1,35 @@
+% Section 9.2, from lectures/L09/README.md: the goals, the evaluation questions, and the next
+% lecture.
+
+\needspace{10\baselineskip}
+\section{Review}
+\label{c9:sec:review}
+
+\subsection*{What you should be able to do now}
+After this chapter, you should:
+\begin{itemize}
+  \item Explain why hardcoded per-instance functions or macros break down once a program needs
+    more than one of something.
+  \item Be able to design a struct that bundles a peripheral's configuration and state.
+  \item Be able to write ``methods'' as plain functions taking a pointer to that struct as their
+    first parameter (the \code{self} convention).
+  \item Refactor a program built on duplicated globals into one built on an array of struct
+    instances.
+\end{itemize}
+
+\needspace{6\baselineskip}
+\subsection*{Questions to test yourself}
+\begin{enumerate}
+  \item What problem does bundling a pin number into a struct solve that a \code{#define}d macro
+    can't?
+  \item Why does \code{gpio_read()} take a pointer to a \code{gpio_t} rather than a \code{gpio_t}
+    by value?
+  \item How would you rewrite five separate
+    \code{LED1_ON}/\allowbreak\code{LED2_ON}/\allowbreak\dots{} macros as a single
+    \code{gpio_write()} function plus an array of \code{gpio_t} instances?
+\end{enumerate}
+
+\needspace{6\baselineskip}
+\subsection*{Looking ahead}
+Chapter~\ref{c10:ch}: hiding a struct's implementation details (opaque structs) and manual
+polymorphism via function pointers and vtables.

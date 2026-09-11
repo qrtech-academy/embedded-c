@@ -1,0 +1,46 @@
+% Answers to Chapter 7's exercises, lectures/L07/appendix/b_exercises.md. The book's own answers:
+% the lecture publishes none.
+\answerchapter{7}{EEPROM}
+
+\answer{c7:ex:1}
+Because a write goes on after the function has returned, and a read does not. Setting \code{EEPE}
+only starts the write: the EEPROM then spends a few milliseconds (about 3.3\,ms) programming the
+cell in the background while the CPU carries on, and \code{EEPE} stays set until it is done. While
+it is set, no new write can start, no read can be made, and \code{EEAR} cannot be changed, so the
+next access, whichever it is, has to wait for it first. That is why \code{eeprom_read_byte()} also
+waits on \code{EEPE} before it starts: an earlier write may still be running.
+
+A read has no such tail. Setting \code{EERE} makes the hardware read the cell straight away: the
+CPU is halted for four cycles and the byte is in \code{EEDR} by the time the next instruction runs.
+When \code{eeprom_read_byte()} returns \code{EEDR}, the read is already over and there is nothing
+left to wait for.
+
+\answer{c7:ex:2}
+The window is two consecutive instructions, and an interrupt can be taken between any two
+instructions. Taking one is never quick: the CPU needs at least four cycles just to respond, then
+jumps through the vector table, runs the ISR's prologue, body and epilogue, and returns with
+\code{reti}. So \emph{any} interrupt that lands between setting \code{EEMPE} and setting
+\code{EEPE}, not only a slow one, pushes the second write out of the four-cycle window. Disabling
+interrupts is the only way to guarantee that nothing runs between the two.
+
+The failure is a lost write that nobody notices. The hardware clears \code{EEMPE} again four cycles
+after it was set, so when the code finally sets \code{EEPE} it has no effect: the byte is never
+written and the cell keeps its old value. Nothing reports it: \code{eeprom_write()} still returns
+the full count, and the program runs on as if the write had happened. The damage shows only later,
+typically at the next reset, when \code{setup()} restores a stale state (in \secref{c7:a:4}, the
+LED comes back in the state it had before the last press). And it happens only when a button press
+or a timer overflow happens to land in that two-instruction window, so it is rare, intermittent and
+very hard to reproduce.
+
+\answer{c7:ex:3}
+Not for a device that is used a lot. Every press rewrites the same cell, address 1000, and a cell
+is good for roughly 100,000 write cycles. At 50 presses a day that is about 2000 days, some five
+and a half years; a button pressed once a minute, around the clock, wears the cell out in
+$100\,000$\,min $\approx 69$ days. After that the stored state can no longer be trusted.
+
+Writing only every fifth press cuts the wear to a fifth, so the same use lasts five times as long.
+The price is durability: up to four toggles since the last write are only in RAM, so a reset or a
+power loss at the wrong moment brings the LED back in an older state. That trade-off, how much
+recent state you can afford to lose against how long the cell lasts, is the design decision any
+EEPROM-backed setting makes. (Spreading the writes over several addresses, so that no single cell
+takes all of them, is the other common remedy.)

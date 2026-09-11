@@ -1,0 +1,26 @@
+% Answers to Chapter 2's exercises, lectures/L02/appendix/b_exercises.md. The book's own answers:
+% the lecture publishes none.
+\answerchapter{2}{Hardware-Near Programming in C}
+\answer{c2:ex:1}
+The exercise asks for the expressions, and those are yours to write; what follows is what they
+must produce, for checking the output of the tip's program. The register holds
+$\mathtt{0b10110010} = \mathtt{0xB2} = 178$, with bits 7, 5, 4 and 1 set.
+\begin{parts}
+  \item Setting bit 0 changes only the lowest bit: $\mathtt{0b10110011} = \mathtt{0xB3} = 179$.
+  \item Clearing bit 5 takes away its 32: $\mathtt{0b10010010} = \mathtt{0x92} = 146$.
+  \item Bit 4 is set, so the expression is true. The masked value itself is
+    $\mathtt{0b00010000} = 16$, which \code{printf("\%u\n", ...)} prints as 16; compared against 0,
+    or turned into a \code{bool}, it is 1.
+\end{parts}
+
+\answer{c2:ex:3}
+\begin{parts}
+  \item \code{DDRD}, bit 5 (\code{DDD5}) set to 1: D5 is \code{PORTD5}, and the data direction
+    register is what decides, bit by bit, whether a pin is an output (1) or an input (0).
+  \item \code{PIND}, bit 2 (\code{PIND2}): D2 is \code{PORTD2}, and \code{PINx} is the register
+    that holds the level actually present on the pins; \code{PORTD} would only give back what was
+    last written to it.
+  \item \code{PORTD}, bit 7 (\code{PORTD7}) set to 1, with \code{DDD7} left at 0: on a pin
+    configured as an input, \code{PORTx} no longer drives the pin but switches its internal pull-up
+    resistor on (1) or off (0).
+\end{parts}
