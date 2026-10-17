@@ -37,17 +37,31 @@ subtly? Explain your reasoning.
 ---
 
 **7.** Capstone. Extend A.4's software-PWM approach to dim five LEDs from a single potentiometer,
-each individually switchable. LEDs on D6-D10, buttons on D2, D3, D11-D13 (D2/D3 are `INT0`/`INT1`
-from Lecture 3; D11-D13 share a Pin Change Interrupt, also from Lecture 3):
-* Button D2 toggles LED D6, D3 toggles D7, D11 toggles D8, D12 toggles D9, D13 toggles D10.
-* Only LEDs currently "on" should respond to the potentiometer's duty cycle; "off" LEDs stay dark
-  no matter where the pot is turned.
-* Reuse `adc_read()` from A.3 for the potentiometer reading and the duty-cycle math from A.4.
-  You'll need something to track which of the five LEDs are enabled (five `bool`s, or a `uint8_t`
-  bitmask with bitwise tests), and to drive the on/off timing for all five within one PWM period
-  instead of just one.
+each individually switchable:
+* LEDs on D6-D10.
+* Buttons on D2, D3, D11-D13:
+  * D2/D3 are `INT0`/`INT1` from Lecture 3.
+  * D11-D13 share a Pin Change Interrupt, also from Lecture 3.
 
-For a harder version: track the five enabled-flags in a `uint8_t` bitmask instead of separate
-`bool` variables, and use bitwise operations to toggle and test each one.
+Each button shall toggle the PWM state of an LED:
+* Button D2 toggles LED D6.
+* D3 toggles D7.
+* D11 toggles D8.
+* D12 toggles D9.
+* D13 toggles D10.
+
+Only LEDs currently "on" should respond to the potentiometer's duty cycle; "off" LEDs stay dark no
+matter where the pot is turned.
+
+Reuse `adc_read()` from A.3 for the potentiometer reading and the duty-cycle math from A.4.
+* Track which of the five LEDs are enabled using a `uint8_t` bitmask with bitwise tests.
+* Drive the on/off timing for all five within one PWM period instead of just one.
+* The Pin Change Interrupt runs on any change of D11-D13, so its ISR must work out which button was
+  just pressed.
+  * Declare a `static volatile uint8_t prev` inside the ISR that holds the pin states from the previous interrupt. 
+  * Read the current pin states into `now`, toggle only the LEDs whose buttons were released in `prev` and are pressed in `now`, then store `now` in `prev` for the next
+  interrupt. 
+  * Hint: XOR-ing `prev` with `now` gives a `1` for every pin that changed since the last
+  interrupt; AND-ing that with `now` keeps only the ones that are now pressed.
 
 ---

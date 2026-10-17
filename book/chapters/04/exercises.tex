@@ -62,17 +62,36 @@ subtly? Explain your reasoning.
 \codeexercise{Five dimmable LEDs}
 \label{c4:ex:7}
 Capstone. Extend the software-PWM approach of \secref{c4:a:4} to dim five LEDs from a single
-potentiometer, each individually switchable. LEDs on D6--D10, buttons on D2, D3, D11--D13 (D2/D3
-are \code{INT0}/\code{INT1} from Chapter~\ref{c3:ch}; D11--D13 share a Pin Change Interrupt, also
-from Chapter~\ref{c3:ch}):
+potentiometer, each individually switchable:
 \begin{itemize}
-  \item Button D2 toggles LED D6, D3 toggles D7, D11 toggles D8, D12 toggles D9, D13 toggles D10.
-  \item Only LEDs currently ``on'' should respond to the potentiometer's duty cycle; ``off'' LEDs
-    stay dark no matter where the pot is turned.
-  \item Reuse \code{adc_read()} from \secref{c4:a:3} for the potentiometer reading and the
-    duty-cycle math from \secref{c4:a:4}. You'll need something to track which of the five LEDs
-    are enabled (five \code{bool}s, or a \code{uint8_t} bitmask with bitwise tests), and to drive
-    the on/off timing for all five within one PWM period instead of just one.
+  \item LEDs on D6--D10.
+  \item Buttons on D2, D3, D11--D13:
+    \begin{itemize}
+      \item D2/D3 are \code{INT0}/\code{INT1} from Chapter~\ref{c3:ch}.
+      \item D11--D13 share a Pin Change Interrupt, also from Chapter~\ref{c3:ch}.
+    \end{itemize}
 \end{itemize}
-For a harder version: track the five enabled-flags in a \code{uint8_t} bitmask instead of separate
-\code{bool}s, and use bitwise operations to toggle and test each one.
+Each button shall toggle the PWM state of an LED:
+\begin{itemize}
+  \item Button D2 toggles LED D6.
+  \item D3 toggles D7.
+  \item D11 toggles D8.
+  \item D12 toggles D9.
+  \item D13 toggles D10.
+\end{itemize}
+Only LEDs currently ``on'' should respond to the potentiometer's duty cycle; ``off'' LEDs stay dark
+no matter where the pot is turned.
+
+Reuse \code{adc_read()} from \secref{c4:a:3} for the potentiometer reading and the duty-cycle math
+from \secref{c4:a:4}.
+\begin{itemize}
+  \item Track which of the five LEDs are enabled using a \code{uint8_t} bitmask with bitwise tests.
+  \item Drive the on/off timing for all five within one PWM period instead of just one.
+  \item The Pin Change Interrupt runs on any change of D11--D13, so its ISR must work out which
+    button was just pressed. Declare a \code{static volatile uint8_t prev} inside the ISR that holds
+    the pin states from the previous interrupt. Read the current pin states into \code{now}, toggle
+    only the LEDs whose buttons were released in \code{prev} and are pressed in \code{now}, then
+    store \code{now} in \code{prev} for the next interrupt. Hint: XOR-ing \code{prev} with
+    \code{now} gives a \code{1} for every pin that changed since the last interrupt; AND-ing that
+    with \code{now} keeps only the ones that are now pressed.
+\end{itemize}

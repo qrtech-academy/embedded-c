@@ -286,3 +286,138 @@ passed, so the CPU is free in between instead of spinning inside `_delay_ms()`. 
 also generate PWM entirely in hardware, which this course doesn't cover.)
 
 ---
+
+## A.5 Integer arithmetic instead of `float`
+A.4 computes the duty cycle with a `float`, which reads naturally but costs a lot on this chip. The
+ATmega328P has no floating-point hardware: every `float` division, multiplication and conversion
+is carried out in software, by routines from the compiler's support library that the linker adds
+to your program, and each one takes hundreds of CPU cycles.
+
+The arithmetic here never needs a fraction, though. Multiply before you divide, and the duty cycle
+comes out as a whole percentage, `0`–`100` instead of `0.0`–`1.0`; one more multiplication and
+division turns that percentage into milliseconds. The version below does exactly that. It drops
+A.4's button and reads the potentiometer on A2:
+
+```c
+#define F_CPU 16000000UL // CPU frequency (16 MHz).
+
+#include <avr/io.h>
+#include <util/delay.h>
+
+/** Pin definitions. */
+#define POT1 2U // Pin A2 -> PORTC2.
+#define LED1 1U // Pin D9 -> PORTB1.
+
+#define LED1_ON PORTB |= (1U << LED1)   // Enable LED1.
+#define LED1_OFF PORTB &= ~(1U << LED1) // Disable LED1.
+
+#define PWM_PERIOD_MS 10U // PWM period in ms (on time + off time).
+#define TICK_MS 1U        // Generate a 1 ms delay.
+#define ADC_MAX_RAW 1023U // Maximum raw value from an ADC conversion.
+#define PERCENT 100U      // Multiplier to get ratio in percent [0, 100] instead of [0.0, 1.0].
+
+/**
+ * @brief Read the input of the given analog pin.
+ *
+ * @param[in] pin Analog pin to read.
+ * 
+ * @return 10-bit raw ADC value in the range [0, 1023].
+ */
+static uint16_t adc_read(const uint8_t pin)
+{
+    // Select internal voltage supply and pin.
+    ADMUX = (1U << REFS0) | pin;
+
+    // Enable the ADC, start the conversion with the slowest possible conversion time
+    // for the best possible result.
+    ADCSRA = (1U << ADEN) | (1U << ADSC) | (1U << ADPS2) | (1U << ADPS1) | (1U << ADPS0);
+
+    // Wait for the conversion to complete (the ADC interrupt flag will then be set).
+    while (0U == (ADCSRA & (1U << ADIF))) {}
+
+    // Reset the interrupt flag for the next conversion (the hardware won't do it, since no
+    // interrupt was invoked).
+    ADCSRA = (1U << ADIF);
+
+    // Return the 10-bit ADC result.
+    return ADC;
+}
+
+/**
+ * @brief Generate delay in ms.
+ * 
+ * @param[in] ms Duration in ms.
+ */
+static void delay_ms(const uint16_t ms)
+{
+    for (uint16_t i = 0U; i < ms; ++i)
+    {
+        _delay_ms(TICK_MS);
+    }
+}
+
+/**
+ * @brief Initialize the system.
+ */
+static void setup(void)
+{
+    // Configure the LED as output.
+    DDRB = (1U << LED1);
+}
+
+/**
+ * @brief Run PWM on the LED based on the input from the potentiometer.
+ */
+static void run_pwm(void)
+{
+    // Get the raw ADC value [0, 1023].
+    const uint32_t raw = (uint32_t)(adc_read(POT1));
+
+    // Compute the ratio in the range [0, 100].
+    const uint8_t ratio = (raw * PERCENT) / ADC_MAX_RAW;
+
+    // Compute the on time and off time.
+    const uint8_t on_time  = (uint8_t)((ratio * PWM_PERIOD_MS) / PERCENT);
+    const uint8_t off_time = PWM_PERIOD_MS - on_time;
+
+    LED1_ON;
+    delay_ms(on_time);
+    LED1_OFF;
+    delay_ms(off_time);
+}
+
+/**
+ * @brief Application entry point.
+ */
+int main(void)
+{
+    setup();
+
+    while (1) 
+    {
+        // Read the pot, control the LED brightness based on the input.
+        run_pwm();
+    }
+}
+```
+
+Built with `avr-gcc -Os` for the ATmega328P, the same program computing the on-time with a
+`float`, as A.4 does, takes 1326 bytes of flash, 4.0 % of the chip's 32 KB; this integer version
+takes 420 bytes, 1.3 %. Two-thirds of the `float` program is the software floating-point code.
+(`avr-size -C --mcu=atmega328p main.elf`, from Lecture 2, prints these figures.)
+
+**Note:**
+* `raw` is a `uint32_t` because the largest intermediate result, `1023 * 100 = 102300`, doesn't fit
+  in 16 bits. Without the cast, `adc_read()`'s `uint16_t` result and `PERCENT` (`100U`) would be
+  multiplied as a 16-bit `unsigned int`, AVR's `int` width, and the product would silently wrap
+  past `65535`, giving nonsense duty cycles for every reading above `655`.
+* The second line needs no such care: `ratio` is at most `100`, so `ratio * PWM_PERIOD_MS` is at
+  most `1000`, well within 16 bits.
+* The order matters. `(raw / ADC_MAX_RAW) * PERCENT` would divide first, and integer division
+  throws away the remainder, so the result would be `0` for every reading except `1023`.
+* Integer division truncates (rounds toward zero), where A.4 rounds to the nearest millisecond with
+  `+ 0.5F`. Here every step of the on-time comes half a step later in the potentiometer's travel
+  than in A.4, and the full 10 ms on-time only at a reading of exactly `1023`. To round instead,
+  add half the divisor to the numerator before dividing.
+
+---
