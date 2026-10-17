@@ -48,6 +48,6 @@ from Lecture 3; D11-D13 share a Pin Change Interrupt, also from Lecture 3):
   instead of just one.
 
 For a harder version: track the five enabled-flags in a `uint8_t` bitmask instead of separate
-`bool`s, and use bitwise operations to toggle and test each one.
+`bool` variables, and use bitwise operations to toggle and test each one.
 
 ---
