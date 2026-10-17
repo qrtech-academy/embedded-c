@@ -51,14 +51,15 @@ interrupts all share \code{PCINT2_vect}. The three registers and bits to touch:
 \end{itemize}
 
 \answer{c3:ex:6}
-Keep a copy of the last \code{PINB} value in a \code{static} byte. On each interrupt, read
-\code{PINB} once and XOR it with the copy: the bits that are 1 in the result are the pins that
-changed since the last interrupt. AND-ing that with the new reading keeps the pins that changed
-\emph{and} are now high, which with the book's wiring are the buttons just pressed; releases drop
-out. Test the two button bits, D11 (\code{PORTB3}) and D12 (\code{PORTB4}), in the result, set a
-\code{volatile} flag for each button found pressed, for \code{main()} to read and clear, and store
-the new reading as the copy.
+The pins are live: a button can change while the ISR is running, between two reads of
+\code{PINB}. Say BTN2 is pressed just after the XOR has read \code{PINB}. The XOR saw BTN2 still
+released, so its bit is 0 in the result, and the AND drops it whatever the second read shows; BTN2's
+LED doesn't toggle. The third read, for \code{prev}, then sees BTN2 pressed and stores it. The press
+does set the pin change flag again, so the ISR runs a second time, but by then \code{prev} already
+says pressed, the XOR finds no change, and the press is lost for good. A press between the AND and
+the update of \code{prev} is lost the same way.
 
-Only the button bits are tested, because \code{PINB} shows every pin of the port, the LED
-outputs included. A copy that starts at 0 matches two buttons idling low; initializing it from
-\code{PINB} in \code{setup()}, before \code{sei()}, also covers a button held down at start-up.
+With a single read, \code{prev} always holds exactly the value the tests worked on. A press that
+lands after the read isn't in \code{now}, so it isn't in \code{prev} either; the flag it sets runs
+the ISR again, and that run sees it as a change and toggles the LED. Every change is handled once:
+either by this run, or by the next.

@@ -374,9 +374,9 @@ ISR is tied to `PCINT2_vect`:
 static void setup(void)
 {
     // ...
-    PCICR = (1U << PCIE2);  // Enable PCI on port D.
-    PCMSK2 = (1U << BTN2);  // Specifically D2 / PORTD2.
-    sei();                  // Enable interrupts globally.
+    PCICR  = (1U << PCIE2);  // Enable PCI on port D.
+    PCMSK2 = (1U << BTN2);   // Specifically D2 / PORTD2.
+    sei();                   // Enable interrupts globally.
 }
 
 ISR(PCINT2_vect) // Shared by every enabled PCI pin on port D.
@@ -405,6 +405,108 @@ The same button on A0 (`PORTC0`) instead needs `PCIE1` / `PCMSK1`, and an `ISR(P
   pin level in the ISR, as above.
 * Multiple PCI sources on the same port share an ISR, and if you have more than one, the handler
   needs to work out which pin actually changed (e.g. by keeping a "previous state" byte and
-  XOR-ing it against the current `PINx` read to see which bit flipped).
+  XOR-ing it against the current `PINx` read to see which bit flipped); A.8 shows how.
+
+---
+
+## A.8 Example: three buttons on one PCI vector
+A.5's ISR gets away with checking the pin level, because it has only one button on the port. Add
+more buttons and that's no longer enough. Here, three buttons each toggle their own LED: BTN1 on D11
+toggles LED1 on D8, BTN2 on D12 toggles LED2 on D9, and BTN3 on D13 toggles LED3 on D10. All six
+pins are on port B, so all three buttons fire the same `PCINT0_vect`.
+
+The circuit is the one from exercise 8 in Appendix B; this example doesn't use the buttons on D2
+and D3.
+
+![](./images/circuit_state_machine_exercise.jpg)
+
+With a level check like A.5's, each button's test passes whenever that button is down, whichever
+pin caused the interrupt. Hold BTN2 down and press BTN1: the ISR runs once, for BTN1, but both pins
+read pressed, so both LED1 and LED2 toggle. Release BTN1 and the ISR runs again; BTN2 still reads
+pressed, so its LED toggles once more.
+
+The fix is to remember what the buttons looked like the last time the ISR ran, and compare:
+
+1. Keep the previous button states in a `static volatile` local variable inside the ISR, `prev`. A
+   `static` local is created once and keeps its value from one call to the next, like a global, but
+   only the ISR can see it, and the ISR is the only place it's needed. It starts at `0`, which
+   matches all three buttons idling low. `volatile` follows this course's habit of marking every
+   variable an ISR writes; since nothing outside the ISR touches `prev`, the caching problem
+   explained after A.4 can't actually happen to it, but the habit costs next to nothing.
+2. Read `PINB` once into `now`. Read it only once: a button could change between two separate
+   reads, and the tests would then disagree. `PINB` shows every pin of port B, the LED outputs
+   included, so only the button bits of the result are tested; a changing LED bit is ignored.
+3. XOR `prev` with `now`: each bit that's `1` in the result is a button that changed since the last
+   interrupt. AND that with `now` to keep only the buttons that changed *and* are now high, the ones
+   just pressed; releases drop out.
+4. Store `now` in `prev` for the next interrupt, then toggle the LED of each button found pressed.
+
+```c
+#include <avr/interrupt.h>
+#include <avr/io.h>
+
+#define LED1 0U // D8  -> PORTB0.
+#define LED2 1U // D9  -> PORTB1.
+#define LED3 2U // D10 -> PORTB2.
+
+#define BTN1 3U // D11 -> PORTB3.
+#define BTN2 4U // D12 -> PORTB4.
+#define BTN3 5U // D13 -> PORTB5.
+
+#define LED1_TOGGLE PINB = (1U << LED1) // Toggle LED1.
+#define LED2_TOGGLE PINB = (1U << LED2) // Toggle LED2.
+#define LED3_TOGGLE PINB = (1U << LED3) // Toggle LED3.
+
+/**
+ * @brief Interrupt service routine for I/O port B.
+ *
+ *        Toggle a given LED on rising edge of the corresponding button.
+ */
+ISR(PCINT0_vect)
+{
+    static volatile uint8_t prev = 0U;
+
+    const uint8_t now    = PINB;
+    const uint8_t event  = now ^ prev;
+    const uint8_t rising = event & now;
+    prev                 = now;
+
+    if (rising & (1U << BTN1)) { LED1_TOGGLE; }
+    if (rising & (1U << BTN2)) { LED2_TOGGLE; }
+    if (rising & (1U << BTN3)) { LED3_TOGGLE; }
+}
+
+/**
+ * @brief Set up system.
+ */
+static void setup(void)
+{
+    // Configure LEDs as outputs.
+    DDRB = (1U << LED1) | (1U << LED2) | (1U << LED3);
+
+    // Enable pin change interrupts for BTN1-BTN3.
+    PCICR  = (1U << PCIE0);
+    PCMSK0 = (1U << BTN1) | (1U << BTN2) | (1U << BTN3);
+    sei();
+}
+
+/**
+ * @brief Application entry point.
+ */
+int main(void)
+{
+    setup();
+    while (1) {}
+}
+```
+
+**Note:**
+* Nothing outside the ISR uses `prev`, so it doesn't need to be a global, and keeping it local means
+  no other function can change it by mistake.
+* A button held down at reset reads as just pressed the first time *any* button fires the ISR,
+  because `prev` starts at `0`. If that matters, keep `prev` at file scope instead and initialize it
+  from `PINB` in `setup()`, before `sei()`, at the cost of a global every function can see.
+* The same steps work for any number of buttons on the port: enable each button's bit in `PCMSK0`,
+  and add a test for it after the XOR and AND.
 
 ---

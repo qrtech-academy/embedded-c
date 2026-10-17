@@ -57,11 +57,6 @@ Reuse `adc_read()` from A.3 for the potentiometer reading and the duty-cycle mat
 * Track which of the five LEDs are enabled using a `uint8_t` bitmask with bitwise tests.
 * Drive the on/off timing for all five within one PWM period instead of just one.
 * The Pin Change Interrupt runs on any change of D11-D13, so its ISR must work out which button was
-  just pressed.
-  * Declare a `static volatile uint8_t prev` inside the ISR that holds the pin states from the previous interrupt. 
-  * Read the current pin states into `now`, toggle only the LEDs whose buttons were released in `prev` and are pressed in `now`, then store `now` in `prev` for the next
-  interrupt. 
-  * Hint: XOR-ing `prev` with `now` gives a `1` for every pin that changed since the last
-  interrupt; AND-ing that with `now` keeps only the ones that are now pressed.
+  just pressed; use the `prev`/`now` technique from Lecture 3, A.8.
 
 ---

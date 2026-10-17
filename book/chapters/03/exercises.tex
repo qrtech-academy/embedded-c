@@ -53,11 +53,12 @@ A project needs an interrupt on D4. Work out, from the formula table in \secref{
 \code{PCINT} number that is, which port group it belongs to, and which three registers/bits need to
 be touched to enable it.
 
-\reflexercise{Two buttons, one vector}
+\reflexercise{Reading \code{PINB} once}
 \label{c3:ex:6}
-Two buttons are wired to D11 and D12 (both \code{PORTB}). Both are configured via PCI and share
-\code{PCINT0_vect}. Sketch how a single ISR could tell which button changed, using a ``previous
-state'' byte compared against the current \code{PINB} read.
+\secref{c3:a:8}'s ISR reads \code{PINB} once into \code{now} and uses that copy everywhere: in the
+XOR, in the AND, and when updating \code{prev}. Suppose it read \code{PINB} afresh in each of those
+three places instead. Describe a button press this version could miss entirely, and explain why the
+single read can't miss it.
 
 % ------------------------------------------------------------------------------------------
 \exerciseset{Program}
@@ -108,7 +109,7 @@ The three LEDs' behavior depends on the current state:
 \end{itemize}
 As with every other example in this chapter, keep each ISR minimal: flag which button fired (and,
 for the three PCI buttons sharing one vector, work out \emph{which} pin changed, as in
-Exercise~\ref{c3:ex:6}), and let \code{main()} do the actual work of updating \code{state} and
+\secref{c3:a:8}), and let \code{main()} do the actual work of updating \code{state} and
 driving the LEDs.
 
 \bookimage{lectures/L03/appendix/images/circuit_state_machine_exercise.jpg}{Three LEDs on D8--D10

@@ -88,10 +88,5 @@ from \secref{c4:a:4}.
   \item Track which of the five LEDs are enabled using a \code{uint8_t} bitmask with bitwise tests.
   \item Drive the on/off timing for all five within one PWM period instead of just one.
   \item The Pin Change Interrupt runs on any change of D11--D13, so its ISR must work out which
-    button was just pressed. Declare a \code{static volatile uint8_t prev} inside the ISR that holds
-    the pin states from the previous interrupt. Read the current pin states into \code{now}, toggle
-    only the LEDs whose buttons were released in \code{prev} and are pressed in \code{now}, then
-    store \code{now} in \code{prev} for the next interrupt. Hint: XOR-ing \code{prev} with
-    \code{now} gives a \code{1} for every pin that changed since the last interrupt; AND-ing that
-    with \code{now} keeps only the ones that are now pressed.
+    button was just pressed; use the \code{prev}/\code{now} technique from \secref{c3:a:8}.
 \end{itemize}

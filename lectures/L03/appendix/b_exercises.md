@@ -30,9 +30,10 @@ touched to enable it.
 
 ---
 
-**6.** Two buttons are wired to D11 and D12 (both PORTB). Both are configured via PCI and share
-`PCINT0_vect`. Sketch how a single ISR could tell which button changed, using a "previous state"
-byte compared against the current `PINB` read.
+**6.** A.8's ISR reads `PINB` once into `now` and uses that copy everywhere: in the XOR, in the AND,
+and when updating `prev`. Suppose it read `PINB` afresh in each of those three places instead.
+Describe a button press this version could miss entirely, and explain why the single read can't
+miss it.
 
 ---
 
@@ -72,7 +73,7 @@ The three LEDs' behavior depends on the current state:
 * `STATE_ON`: all three LEDs held on.
 
 As with every other example in this lecture, keep each ISR minimal: flag which button fired (and,
-for the three PCI buttons sharing one vector, work out *which* pin changed, as in exercise 6), and
+for the three PCI buttons sharing one vector, work out *which* pin changed, as in A.8), and
 let `main()` do the actual work of updating `state` and driving the LEDs.
 
 ![](./images/circuit_state_machine_exercise.jpg)
