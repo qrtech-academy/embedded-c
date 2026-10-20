@@ -198,6 +198,15 @@ void timer_reset(timer_t* self);
     \item Should \code{timer_clear()} also reset the fields of \code{self}?
     \item If so, which values would leave the instance in a safe, inert state?
   \end{itemize}
+  \item \code{timeout_ms} is only known at runtime, so converting it into a number of interrupts
+    happens on the chip:
+  \begin{itemize}
+    \item Avoid \code{float} for this conversion, see \secref{c4:a:5}.
+    \item Hint: a 1\,ms compare-match interrupt (prescaler 64 and a compare value of 249, since
+      16\,MHz / 64 / 250 = 1\,kHz) makes the number of interrupts equal to \code{timeout_ms}, with
+      no division at all. The compare value fits all three timer/counters, but check each one's
+      prescaler bits: Timer 2's differ from Timer 0's and Timer 1's.
+  \end{itemize}
 \end{itemize}
 
 \task{Timer control}

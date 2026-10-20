@@ -127,6 +127,14 @@ void timer_reset(timer_t* self);
 * Consider the same design question raised for `gpio_free()` in Exercise 3:
   * Should `timer_clear()` also reset the fields of `self`?
   * If so, which values would leave the instance in a safe, inert state?
+* `timeout_ms` is only known at runtime, so converting it into a number of interrupts happens on the
+  chip:
+  * Avoid `float` for this conversion, see
+    [L04 Appendix A.5](../../L04/appendix/a_adc.md#a5-integer-arithmetic-instead-of-float).
+  * Hint: a 1 ms compare-match interrupt (prescaler 64 and a compare value of 249, since
+    16 MHz / 64 / 250 = 1 kHz) makes the number of interrupts equal to `timeout_ms`, with no
+    division at all. The compare value fits all three timer/counters, but check each one's
+    prescaler bits: Timer 2's differ from Timer 0's and Timer 1's.
 
 ### Timer control
 * `timer_start()` must start or enable the timer.
