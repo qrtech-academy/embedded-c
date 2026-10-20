@@ -72,6 +72,8 @@ was most recently pressed, each mapped to a different timer:
   \item Pressing a button toggles \emph{that} timer's blinking on or off. If it was off, turn it on
     and turn the other two off (only one timer drives the LEDs at a time). If it was already the
     active timer, turn it off entirely and the LEDs go dark.
+  \item All three buttons are on port B and share \code{PCINT0_vect}; detect which one was just
+    pressed with the \code{prev}/\code{now} edge detection from \secref{c3:a:8}.
   \item Configure all three timers to tick at the same rate (\textdiv1024 prescaler,
     $\sim$0.064\,ms per tick) so the overflow-counting logic in \secref{c5:a:4} works identically
     for each. Timer 1 needs CTC mode with \code{OCR1A} set so its compare-match period matches
@@ -80,7 +82,7 @@ was most recently pressed, each mapped to a different timer:
   \item Define a small struct to hold \code{required_interrupts} and \code{executed_interrupts} for
     one timer (see \secref{c5:a:2} and \secref{c5:a:4} for the counting pattern), and use three
     instances, one per timer, instead of three sets of loose globals.
+  \item Track the currently active timer in a single variable, using either an enum
+    (\code{TIMER_NONE}, \code{TIMER_0}, \code{TIMER_1}, \code{TIMER_2}) or macros with timer
+    indexes.
 \end{itemize}
-For a harder version: instead of tracking ``currently active timer'' with three separate
-\code{bool}s, use an enum (\code{TIMER_NONE}, \code{TIMER_0}, \code{TIMER_1}, \code{TIMER_2}) and a
-single variable.

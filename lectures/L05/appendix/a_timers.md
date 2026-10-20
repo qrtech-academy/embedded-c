@@ -172,6 +172,11 @@ from its leading `(uint8_t)` cast instead: the cast applies to the parenthesized
 follows it, and a cast binds tighter than any arithmetic or comparison operator, so the expanded
 macro still acts as a single operand wherever it's used.
 
+These macros use `float`, but they cost nothing at runtime: every operand is a constant, so the
+compiler computes the result while compiling and only the final integer ends up in the program.
+[L04 Appendix A.5](../../L04/appendix/a_adc.md#a5-integer-arithmetic-instead-of-float)'s advice to
+avoid `float` applies to math on values only known at runtime, like an ADC reading.
+
 `ovf_count` here is a function-local `static` variable, scoped entirely inside the ISR: nothing
 outside `ISR(TIMER0_OVF_vect)` ever touches it. That means `volatile` isn't actually load-bearing
 on this specific variable: the compiler can already see every read and write to `ovf_count` within

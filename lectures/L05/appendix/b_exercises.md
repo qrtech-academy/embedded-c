@@ -44,6 +44,8 @@ prescaler. What value goes in `OCR1A`? (Timer 1 is 16-bit, so check whether your
 * Pressing a button toggles *that* timer's blinking on or off. If it was off, turn it on and turn
   the other two off (only one timer drives the LEDs at a time). If it was already the active timer,
   turn it off entirely and the LEDs go dark.
+* All three buttons are on port B and share `PCINT0_vect`; detect which one was just pressed with
+  the `prev`/`now` edge detection from Lecture 3, A.8.
 * Configure all three timers to tick at the same rate (÷1024 prescaler, ~0.064 ms per tick) so the
   overflow-counting logic in A.4 works identically for each. Timer 1 needs CTC mode with `OCR1A`
   set so its compare-match period matches Timer 0/2's overflow period, even though its 16-bit range
@@ -51,8 +53,7 @@ prescaler. What value goes in `OCR1A`? (Timer 1 is 16-bit, so check whether your
 * Define a small struct to hold `required_interrupts` and `executed_interrupts` for one timer (see
   A.2/A.4 for the counting pattern), and use three instances, one per timer, instead of three sets
   of loose globals.
-
-For a harder version: instead of tracking "currently active timer" with three separate `bool`s, use
-an enum (`TIMER_NONE`, `TIMER_0`, `TIMER_1`, `TIMER_2`) and a single variable.
+* Track the currently active timer in a single variable, using either an enum (`TIMER_NONE`,
+  `TIMER_0`, `TIMER_1`, `TIMER_2`) or macros with timer indexes.
 
 ---
